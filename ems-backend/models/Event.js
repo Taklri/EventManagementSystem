@@ -27,10 +27,6 @@ const eventSchema = new mongoose.Schema({
         default: 'Coming Soong',
         required: true
     },
-    organizer: {
-        type: String,
-        required: true
-    },
 }, {timestamps: true})
 
 const Event = mongoose.model('Event', eventSchema);

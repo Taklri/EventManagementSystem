@@ -10,5 +10,4 @@ router.put('/:id', updateUser);
 router.post('/login', loginUser);
 router.post('/verify-otp', verifyLoginOtp);
 
-
 export default router;

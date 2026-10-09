@@ -1,13 +1,10 @@
-* {
-  box-sizing: border-box;
-}
+@import "tailwindcss";
 
-body {
-  margin: 0;
-  font-family: Inter, sans-serif;
-}
 
-#root {
-  width: 100%;
-  min-height: 100vh;
+@theme {
+  --color-nu-navy: #1f3a6b;
+  --color-nu-dark: #1b2f5a;
+  --color-nu-gold: #f5b800;
+  --color-nu-gold-dark: #d9a000;
+  --font-sans: 'Inter', system-ui, sans-serif;
 }

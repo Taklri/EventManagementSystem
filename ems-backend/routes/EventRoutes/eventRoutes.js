@@ -7,14 +7,16 @@ import {
   updateEvent,
   archiveEvent,
 } from "../../controller/createEventController.js";
+import { authenticate } from "../../middleware/auth.js";
+import { authorizeRoles } from "../../middleware/authorize.js";
 
 const router = express.Router();
 
-router.post("/", createEvent);
+router.post("/", authenticate, authorizeRoles("admin"),  createEvent);
 router.get("/", getEvents);
 router.get("/archived", getArchivedEvents);
 router.get("/:id", getEventById);
-router.put("/:id", updateEvent);
-router.patch("/:id/archive", archiveEvent);
+router.put("/:id", authenticate, authorizeRoles("admin"), updateEvent);
+router.patch("/:id/archive", authenticate, authorizeRoles("admin"), archiveEvent);
 
 export default router;

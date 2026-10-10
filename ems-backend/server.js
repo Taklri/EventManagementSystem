@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import {connectDB} from './config/db.js';
 import routes from './routes/index.js';
 import cookieParser from 'cookie-parser';
+import { apiRateLimiter } from './middleware/rateLimiter.js';
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 
-app.use('/api', routes);
+app.use('/api', apiRateLimiter, routes);
 
 app.get("/", (req,res)=> {
     res.json({message: "API is working"});

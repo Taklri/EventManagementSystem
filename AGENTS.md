@@ -38,7 +38,7 @@ npm run dev
 npm start
 ```
 
-The backend does not currently provide an automated test suite. Do not claim backend tests passed unless tests are added and actually run.
+Run `npm test` in `ems-backend/` for the focused authentication checks, which use simulated database and email responses. Do not claim live database or email delivery was verified by these tests.
 
 ## Git and collaboration rules
 

@@ -107,7 +107,7 @@ npm run dev
 npm start
 ```
 
-Exercise affected endpoints where practical. Check successful requests, validation failures, unauthenticated requests, forbidden-role requests, not-found behavior, and relevant error responses. The backend currently has no automated test suite, so do not report backend tests as passed unless a real test suite was run.
+Exercise affected endpoints where practical. Check successful requests, validation failures, unauthenticated requests, forbidden-role requests, not-found behavior, and relevant error responses. Run `npm test` for focused backend authentication checks with simulated database and email responses. These checks do not replace live API or email-delivery verification.
 
 ### Security-sensitive changes
 

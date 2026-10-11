@@ -17,10 +17,21 @@
 | `POST` | `/api/users/verify-otp` | Public, rate-limited | Verify login OTP and issue an access token plus refresh cookie. |
 | `POST` | `/api/users/verify-registration-otp` | Public, rate-limited | Verify registration OTP, create the student account, and issue tokens. |
 | `POST` | `/api/users/resend-registration-otp` | Public, rate-limited | Resend a registration OTP within cooldown and count limits. |
+| `POST` | `/api/users/resend-login-otp` | Public, rate-limited | Resend a login OTP within cooldown and count limits. |
 | `POST` | `/api/users/refresh` | Refresh cookie | Refresh the access token. |
 | `POST` | `/api/users/logout` | Refresh cookie when present | Clear the refresh-token cookie. |
 
 Registration defaults new users to the `student` role. The current user route does not expose the `getUsers` controller as an endpoint.
+
+### Authentication payloads and validation
+
+- Registration accepts string fields `studentId`, `firstName`, optional `middleName`, `lastName`, `email`, and `password`. IDs use `YYYY-######`; names allow Unicode letters, spaces, apostrophes, and hyphens. Email has no campus domain restriction and is trimmed/lowercased.
+- Registration passwords require at least 8 characters, uppercase/lowercase letters, a number, and a symbol. The bcrypt input limit is 72 UTF-8 bytes. Login accepts existing passwords without applying new registration complexity rules.
+- Login accepts `{ email, password }`. Both OTP verification endpoints accept `{ challengeId, otp }`, with a string challenge ID and a six-digit string code. Both resend endpoints accept `{ challengeId }`.
+- Starting or resending an OTP returns `message`, `challengeId`, ISO `expiresAt`, and `retryAfterSeconds` (the configured resend cooldown). Registration start returns `202`; login start and resends return `200`.
+- Verification returns `accesstoken` and the refresh cookie; registration verification returns `201`, login verification returns `200`.
+- Resend cooldown failures return `429` with `retryAfterSeconds`. Expired challenges require restarting registration/login; consumed challenges and challenges with five incorrect attempts cannot be resent.
+- The frontend uses `VITE_API_BASE_URL` for the API root, defaulting to `/api`. Vite proxies local `/api` calls to the backend on port 5000; production must route `/api` to the backend or configure an explicit API root. Cookie-based calls use credentials. Access tokens live in React memory and sessions restore through `/refresh`.
 
 ## Event endpoints
 

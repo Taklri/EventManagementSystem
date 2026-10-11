@@ -12,3 +12,9 @@ export const hashOtp = async (otp) =>{
 export const compareOtp = async (otp, hashedOtp) => {
     return bcrypt.compare(otp, hashedOtp);
 };
+
+export const challengeDetails = (challenge) => ({
+    challengeId: challenge._id.toString(),
+    expiresAt: challenge.expiresAt.toISOString(),
+    retryAfterSeconds: Number(process.env.OTP_RESEND_SECONDS || 60)
+});

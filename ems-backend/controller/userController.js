@@ -2,7 +2,8 @@ import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import PendingRegistration from "../models/PendingRegistration.js";
 import { sendOtpEmail } from "../services/brevoService.js";
-import { generateOtp, hashOtp } from "../utils/otp.js";
+import { generateOtp, hashOtp, challengeDetails } from "../utils/otp.js";
+import { isValidEmail, passwordValidationError } from "../utils/authValidation.js";
 
 export const registerUser = async (req, res) => {
   try {
@@ -23,8 +24,27 @@ export const registerUser = async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedStudentId = studentId.trim();
+    const normalizedFirstName = firstName.trim();
+    const normalizedMiddleName = middleName ? middleName.trim() : "";
+    const normalizedLastName = lastName.trim();
+    const namePattern = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u;
 
-    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    if (!/^\d{4}-\d{6}$/.test(normalizedStudentId)) {
+      return res.status(400).json({ message: "Student ID must use the format YYYY-######" });
+    }
+
+    if (![normalizedFirstName, normalizedLastName].every((name) => namePattern.test(name))
+      || (normalizedMiddleName && !namePattern.test(normalizedMiddleName))) {
+      return res.status(400).json({ message: "Names may contain letters, spaces, apostrophes, and hyphens only" });
+    }
+
+    const passwordError = passwordValidationError(password);
+    if (passwordError) {
+      return res.status(400).json({ message: passwordError });
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
       return res.status(400).json({
         message: "Please provide a valid email address",
       });
@@ -34,14 +54,10 @@ export const registerUser = async (req, res) => {
 
     if (userExist) {
       return res.status(409).json({
-        message: "User already Exist",
+        message: "A user with this email already exists",
       });
     }
 
-    const normalizedStudentId = String(studentId).trim();
-    const normalizedFirstName = String(firstName).trim();
-    const normalizedMiddleName = middleName ? middleName.trim() : "";
-    const normalizedLastName = String(lastName).trim();
     const hashedPassword = await bcrypt.hash(password, 10);
     const otp = generateOtp();
     const codeHash = await hashOtp(otp);
@@ -64,6 +80,7 @@ export const registerUser = async (req, res) => {
         attempts: 0,
         lastSentAt: now,
         resendCount: 0,
+        consumedAt: null,
       },
       {
         upsert: true,
@@ -80,16 +97,19 @@ export const registerUser = async (req, res) => {
         purpose: "registration",
       });
     } catch (emailError) {
-      await PendingRegistration.deleteOne({ _id: pendingRegistration._id });
+      await PendingRegistration.deleteOne({ _id: pendingRegistration._id, codeHash });
       throw emailError;
     }
 
     return res.status(202).json({
       message: "OTP sent to your email",
-      challengeId: pendingRegistration._id.toString()
+      ...challengeDetails(pendingRegistration)
     });
   } catch (error) {
-    console.error(error);
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: "A user with this email already exists" });
+    }
+    console.error("Registration request failed");
 
     return res.status(500).json({
       message: "Server Error",

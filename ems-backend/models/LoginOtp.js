@@ -22,6 +22,13 @@ const loginOtpSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    lastSentAt: {
+      type: Date,
+    },
+    resendCount: {
+      type: Number,
+      default: 0,
+    },
 
     consumedAt: {
       type: Date,

@@ -43,4 +43,4 @@ npm run dev
 npm start
 ```
 
-There is currently no automated backend test suite. For API changes, perform an appropriate smoke check and report exactly what was verified.
+Run `npm test` for the focused authentication checks. These use simulated database and email responses; also perform appropriate live API smoke checks and report exactly what was verified.

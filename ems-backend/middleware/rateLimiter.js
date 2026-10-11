@@ -29,3 +29,33 @@ export const apiRateLimiter =  rateLimit({
         message: 'Too many requests. Please try again later.'
     }
 })
+
+export const registerRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message:{
+        message: 'Too many registration attempts. Please try again later'
+    }
+});
+
+export const registrationOtpRateLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        message: 'Too many registration OTP attempts. Please try again later.'
+    }
+});
+
+export const registrationResendRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 3,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        message: 'Too many registration OTP resend requests. Please try again later.'
+    }
+});

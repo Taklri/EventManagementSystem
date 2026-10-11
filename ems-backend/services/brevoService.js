@@ -1,6 +1,17 @@
 import { BrevoClient } from '@getbrevo/brevo'
 
-export const sendOtpEmail = async ({recipientEmail, recipientName, otp}) => {
+export const sendOtpEmail = async ({
+    recipientEmail,
+    recipientName,
+    otp,
+    purpose = 'login'
+}) => {
+
+    const isRegistration = purpose === 'registration';
+    const emailPurpose = isRegistration ? 'registration' : 'login';
+    const emailHeading = isRegistration
+        ? 'Registration Verification'
+        : 'Login Verification';
 
     const brevo = new BrevoClient({
         apiKey: process.env.BREVO_API_KEY
@@ -16,8 +27,8 @@ export const sendOtpEmail = async ({recipientEmail, recipientName, otp}) => {
                 name: recipientName
             }
         ],
-        subject: 'Your Event Management System OTP',
-        textContent: `Your verification code is ${otp}. It expires in ${
+        subject: `Your Event Management System ${emailPurpose} OTP`,
+        textContent: `Your ${emailPurpose} verification code is ${otp}. It expires in ${
     process.env.OTP_EXPIRES_MINUTES || 5
 } minutes.`,
 
@@ -44,10 +55,10 @@ export const sendOtpEmail = async ({recipientEmail, recipientName, otp}) => {
 
                             <tr>
                                 <td style="padding:32px; text-align:center; color:#333333;">
-                                    <h2>Login Verification</h2>
+                                    <h2>${emailHeading}</h2>
 
                                     <p>
-                                        Use the verification code below to complete your login:
+                                        Use the verification code below to complete your ${emailPurpose}:
                                     </p>
 
                                     <div style="

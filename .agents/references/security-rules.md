@@ -37,7 +37,12 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 - Registration: 5 requests per hour.
 - Registration OTP verification: 5 requests per 10 minutes.
 - Registration OTP resend: 3 requests per hour, with an application-level cooldown and resend count.
+- Login OTP resend: 3 requests per hour, with the configured `OTP_RESEND_SECONDS` cooldown and at most 3 resends per challenge.
 - OTP records also enforce a maximum of 5 incorrect attempts.
+
+OTP rotation and verification use conditional database updates to reject stale or simultaneous attempts. Failed resend delivery restores the previous code when the challenge has not since been consumed. Registration temporarily marks a challenge consumed before account creation and releases the claim if creation fails. Pending records without the new consumed field are treated as unconsumed.
+
+The frontend keeps access tokens in memory, refreshes active sessions before the 15-minute token expiry, and restores sessions with the HTTP-only cookie after reload. Passwords and OTP values are never persisted in browser storage.
 
 ## Environment variables
 

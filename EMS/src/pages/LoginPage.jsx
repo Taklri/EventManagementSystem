@@ -1,111 +1,73 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import bgImage from '../assets/bgimage.png';
-import nuLogo from '../assets/NULOGO.svg';
-import eyeIcon from '../assets/eye.svg';
-import eyeOffIcon from '../assets/eye-off.svg';
+import { Link, useNavigate } from 'react-router-dom';
+import AuthLayout from '../components/AuthLayout';
+import PasswordVisibilityToggle from '../components/PasswordVisibilityToggle';
+import { authApi } from '../lib/api';
+import { validateEmail } from '../lib/authValidation';
 
-function LoginPage() {
- // USER INPUTS
+export default function LoginPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPass, setShowPass] = useState(false);
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    console.log(email, password);
-  };
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const emailError = emailTouched ? validateEmail(email) : '';
+  const passwordError = passwordTouched && !password ? 'Password is required.' : '';
 
-  // SHOW OR HIDE
-  let passType = 'password';
-  let passIcon = eyeIcon;
-  if (showPass === true) {
-    passType = 'text';
-    passIcon = eyeOffIcon;
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (isSubmitting) return;
+    setEmailTouched(true);
+    setPasswordTouched(true);
+    if (validateEmail(email) || !password) {
+      event.currentTarget.elements.namedItem(validateEmail(email) ? 'email' : 'password')?.focus();
+      return;
+    }
+    setIsSubmitting(true);
+    setFormError('');
+    try {
+      const result = await authApi.login({ email: email.trim(), password });
+      navigate('/login/otp', { state: { challengeId: result.challengeId, expiresAt: result.expiresAt, retryAfterSeconds: result.retryAfterSeconds, email: email.trim() } });
+    } catch (error) {
+      setFormError(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-between px-[7vw] py-5 font-sans bg-cover bg-center"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(27, 71, 153, 0.47), rgba(250, 252, 255, 0.36)), url(' + bgImage + ')',
-      }}
-    >
-      {/*title text*/}
-      <div className="self-end mb-10 text-white">
-        <p className="mb-1.5 text-sm text-nu-gold">National University</p>
-        <h1 className="text-7xl font-extrabold leading-[1.05]">
-          Event <br /> Management
-        </h1>
-        <div className="h-1 mt-[18px] bg-nu-gold"></div>
-      </div>
-
-
-      <div className="w-[550px] h-[750px] mr-[60px] px-10 pt-9 pb-7 flex flex-col bg-white rounded-[18px]">
-        <div className="text-center">
-          <img src={nuLogo} alt="NU Logo" className="w-[90px] mx-auto" />
-          <p className="mt-1.5 text-[13px] text-nu-navy">National University</p>
-          <h2 className="mt-[18px] mb-1 text-[34px] font-bold text-nu-dark">Login</h2>
-          <p className="text-[15px] text-gray-500">Please enter your credentials to access MyNU.</p>
+    <AuthLayout compact>
+      <h2 className="text-center text-2xl font-bold text-nu-dark">Login</h2>
+      <p className="mb-7 mt-1 text-center text-sm text-slate-500">Sign in to continue to your account.</p>
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+        <div>
+          <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
+          <input id="login-email" name="email" required type="email" autoComplete="email" inputMode="email" value={email}
+            onChange={(event) => { setEmail(event.target.value); setEmailTouched(true); setFormError(''); }}
+            onBlur={() => setEmailTouched(true)} aria-invalid={Boolean(emailError)} aria-describedby={emailError ? 'login-email-error' : undefined}
+            placeholder="name@example.com" className={`w-full rounded-lg border px-3.5 py-3 text-sm outline-none transition focus:ring-2 focus:ring-nu-navy/20 ${emailError ? 'border-red-500 focus:border-red-500' : 'border-slate-200 focus:border-nu-navy'}`} />
+          {emailError && <p aria-live="polite" id="login-email-error" className="mt-1 text-xs text-red-700">{emailError}</p>}
         </div>
-
-        {/* form */}
-        <form onSubmit={handleSubmit} className="mt-14">
-          <label className="block mb-3 text-[15px] font-medium">Email</label>
-          <input
-            type="email"
-            placeholder="name@students.nu-moa.edu.ph"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="w-full h-12 px-4 text-[15px] border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-            required
-          />
-
-          <label className="block mt-9 mb-3 text-[15px] font-medium">Password</label>
-          <div className="relative">
-            <input
-              type={passType}
-              placeholder="Enter password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full h-12 pl-4 pr-[52px] text-[15px] border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPass(!showPass)}
-              className="absolute inset-y-0 right-4 flex items-center cursor-pointer"
-            >
-              <img src={passIcon} alt="Show or hide password" className="w-[22px] h-[22px]" />
-            </button>
+        <div>
+          <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
+          <div className="flex rounded-lg border border-slate-200 focus-within:border-nu-navy focus-within:ring-2 focus-within:ring-nu-navy/20">
+            <input id="login-password" name="password" required type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password}
+              onChange={(event) => { setPassword(event.target.value); setPasswordTouched(true); setFormError(''); }}
+              onBlur={() => setPasswordTouched(true)} aria-invalid={Boolean(passwordError)} aria-describedby={passwordError ? 'login-password-error' : undefined}
+              placeholder="Enter your password" className="min-w-0 flex-1 rounded-l-lg px-3.5 py-3 text-sm outline-none" />
+            <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((value) => !value)} controls="login-password" />
           </div>
-
-          <div className="mt-3.5 text-right">
-            <Link
-              to="/forgot-password"
-              className="text-sm font-bold text-[#6b7a99] hover:text-nu-gold-dark"
-            >
-              Forgot Password?
-            </Link>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full h-[50px] mt-8 text-base font-bold text-white bg-nu-navy rounded-[10px] cursor-pointer hover:bg-nu-gold hover:text-nu-dark"
-          >
-            Login Account
-          </button>
-        </form>
-
-        <p className="mt-auto text-center text-sm text-gray-600">
-          Don't have an account?{' '}
-          <Link to="/register" className="font-bold text-nu-dark hover:text-nu-gold-dark">
-            Sign Up
-          </Link>
-        </p>
-      </div>
-    </div>
+          {passwordError && <p aria-live="polite" id="login-password-error" className="mt-1 text-xs text-red-700">{passwordError}</p>}
+        </div>
+        {formError && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-800">{formError}</p>}
+        <button type="submit" disabled={isSubmitting} className="w-full rounded-lg bg-nu-navy px-4 py-3 text-sm font-semibold text-white transition hover:bg-nu-dark focus:outline-none focus:ring-2 focus:ring-nu-navy focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
+          {isSubmitting ? 'Sending verification code…' : 'Login Account'}
+        </button>
+      </form>
+      <p className="mt-7 text-center text-sm text-slate-600">Don’t have an account? <Link to="/register" className="font-semibold text-nu-navy underline-offset-2 hover:underline">Create one</Link></p>
+    </AuthLayout>
   );
 }
-
-export default LoginPage;

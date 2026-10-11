@@ -7,7 +7,9 @@ import mongoose from 'mongoose';
 import LoginOtp from '../models/LoginOtp.js';
 import PendingRegistration from '../models/PendingRegistration.js';
 import { sendOtpEmail } from '../services/brevoService.js';
-import { generateOtp, hashOtp, compareOtp } from '../utils/otp.js';
+import { resendOtpChallenge } from '../services/otpChallengeService.js';
+import { isValidEmail } from '../utils/authValidation.js';
+import { generateOtp, hashOtp, compareOtp, challengeDetails } from '../utils/otp.js';
 
 const issueTokens = (user, res) => {
     const accessToken = jwt.sign(
@@ -45,15 +47,18 @@ const issueTokens = (user, res) => {
 
 export const loginUser = async (req, res) => {
     try{
-        const {email, password} = req.body
+        const {email, password} = req.body || {};
 
-        if(!email || !password){
+        if(typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password){
             return res.status(400).json({
                 message: "Please Enter your Credentials"
             })
         }
 
         const normalizedEmail = email.trim().toLowerCase();
+        if (!isValidEmail(normalizedEmail)) {
+            return res.status(400).json({ message: 'Please provide a valid email address' });
+        }
 
         const user = await User.findOne({email: normalizedEmail});
 
@@ -94,29 +99,89 @@ export const loginUser = async (req, res) => {
         const loginOtp = await LoginOtp.create({
             user: user._id,
             codeHash: otpHash,
-            expiresAt
+            expiresAt,
+            lastSentAt: new Date(),
+            resendCount: 0
         });
 
-        await sendOtpEmail({
-            recipientEmail: user.email,
-            recipientName: user.firstName,
-            otp,
-            purpose: 'login'
-        });
+        try {
+            await sendOtpEmail({
+                recipientEmail: user.email,
+                recipientName: user.firstName,
+                otp,
+                purpose: 'login'
+            });
+        } catch (error) {
+            await LoginOtp.deleteOne({ _id: loginOtp._id });
+            throw error;
+        }
 
         return res.status(200).json({
             message: 'OTP sent to your email',
-            challengeId: loginOtp._id.toString()
+            ...challengeDetails(loginOtp)
         });
     }
     catch (err) {
-        console.error(err);
+        console.error('Login request failed');
 
         return res.status(500).json({
             message: "Internal server error"
         });
     }
 }
+
+export const resendLoginOtp = async (req, res) => {
+    try {
+        const { challengeId } = req.body || {};
+        if (typeof challengeId !== 'string' || !mongoose.isValidObjectId(challengeId)) {
+            return res.status(400).json({ message: 'A valid challenge ID is required' });
+        }
+
+        const loginOtp = await LoginOtp.findById(challengeId);
+        if (!loginOtp || loginOtp.consumedAt) {
+            return res.status(401).json({ message: 'Invalid or expired login challenge' });
+        }
+        if (loginOtp.expiresAt <= new Date()) {
+            return res.status(410).json({ message: 'Login challenge has expired. Please log in again.' });
+        }
+        if (loginOtp.attempts >= 5) {
+            return res.status(429).json({ message: 'Too many incorrect OTP attempts' });
+        }
+
+        const resendCooldownSeconds = Number(process.env.OTP_RESEND_SECONDS || 60);
+        const lastSentAt = loginOtp.lastSentAt || loginOtp.createdAt || new Date();
+        const elapsedSeconds = Math.floor((Date.now() - lastSentAt.getTime()) / 1000);
+        if (elapsedSeconds < resendCooldownSeconds) {
+            return res.status(429).json({
+                message: 'Please wait before requesting another OTP',
+                retryAfterSeconds: resendCooldownSeconds - elapsedSeconds
+            });
+        }
+        if (loginOtp.resendCount >= 3) {
+            return res.status(429).json({ message: 'Login OTP resend limit reached' });
+        }
+
+        const user = await User.findById(loginOtp.user);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const updated = await resendOtpChallenge({
+            model: LoginOtp,
+            challenge: loginOtp,
+            recipientEmail: user.email,
+            recipientName: user.firstName,
+            purpose: 'login'
+        });
+        if (!updated) return res.status(409).json({ message: 'This challenge changed. Please try again.' });
+
+        return res.status(200).json({
+            message: 'Login OTP resent',
+            ...challengeDetails(updated)
+        });
+    } catch (error) {
+        console.error('Login OTP resend failed');
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
 
 export const refreshAccessToken = async (req, res) => {
     try {
@@ -148,7 +213,7 @@ export const refreshAccessToken = async (req, res) => {
             accesstoken: accessToken
         });
     } catch (error) {
-        console.error('Refresh token error:', error.message);
+        console.error('Refresh token request failed');
 
         return res.status(401).json({
             message: 'Invalid or expired refresh token'
@@ -160,7 +225,7 @@ export const verifyLoginOtp = async (req,res) => {
     try{
 
         const { challengeId, otp } = req.body || {};
-        const submittedOtp = String(otp || '').trim();
+        const submittedOtp = typeof otp === 'string' ? otp.trim() : '';
 
         if(!challengeId || !submittedOtp){
             return res.status(400).json({
@@ -168,7 +233,7 @@ export const verifyLoginOtp = async (req,res) => {
             });
         }
 
-        if(!mongoose.isValidObjectId(challengeId)){
+        if(typeof challengeId !== 'string' || !mongoose.isValidObjectId(challengeId)){
             return res.status(400).json({
                 message: 'Invalid challenge ID'
             });
@@ -202,7 +267,7 @@ export const verifyLoginOtp = async (req,res) => {
 
         if(loginOtp.attempts >= 5){
             return res.status(429).json({
-                message: 'Too many incorrect OTp attempts'
+                message: 'Too many incorrect OTP attempts'
             });
         }
 
@@ -212,8 +277,10 @@ export const verifyLoginOtp = async (req,res) => {
         );
 
         if (!otpIsValid) {
-            loginOtp.attempts += 1;
-            await loginOtp.save();
+            await LoginOtp.updateOne(
+                { _id: loginOtp._id, codeHash: loginOtp.codeHash, consumedAt: null, attempts: { $lt: 5 } },
+                { $inc: { attempts: 1 } }
+            );
 
             return res.status(401).json({
                 message: 'Invalid or expired OTP'
@@ -228,8 +295,13 @@ export const verifyLoginOtp = async (req,res) => {
             });
         }
 
-        loginOtp.consumedAt = new Date();
-        await loginOtp.save();
+        const consumed = await LoginOtp.updateOne(
+            { _id: loginOtp._id, codeHash: loginOtp.codeHash, consumedAt: null, expiresAt: { $gt: new Date() }, attempts: { $lt: 5 } },
+            { $set: { consumedAt: new Date() } }
+        );
+        if (consumed.modifiedCount !== 1) {
+            return res.status(401).json({ message: 'Invalid, expired, or already used OTP' });
+        }
 
         const accessToken = issueTokens(user, res);
 
@@ -240,7 +312,7 @@ export const verifyLoginOtp = async (req,res) => {
 
     }
     catch (error) {
-        console.error(error);
+        console.error('Login OTP verification failed');
 
         return res.status(500).json({
             message: 'Internal server error'
@@ -250,8 +322,8 @@ export const verifyLoginOtp = async (req,res) => {
 
 export const verifyRegistrationOtp = async (req, res) => {
     try {
-        const { challengeId, otp } = req.body;
-        const submittedOtp = String(otp || '').trim();
+        const { challengeId, otp } = req.body || {};
+        const submittedOtp = typeof otp === 'string' ? otp.trim() : '';
 
         if (!challengeId || !submittedOtp) {
             return res.status(400).json({
@@ -259,7 +331,7 @@ export const verifyRegistrationOtp = async (req, res) => {
             });
         }
 
-        if (!mongoose.isValidObjectId(challengeId)) {
+        if (typeof challengeId !== 'string' || !mongoose.isValidObjectId(challengeId)) {
             return res.status(400).json({
                 message: 'Invalid challenge ID'
             });
@@ -273,7 +345,7 @@ export const verifyRegistrationOtp = async (req, res) => {
 
         const pendingRegistration = await PendingRegistration.findById(challengeId);
 
-        if (!pendingRegistration) {
+        if (!pendingRegistration || pendingRegistration.consumedAt) {
             return res.status(401).json({
                 message: 'Invalid or expired registration OTP'
             });
@@ -297,22 +369,42 @@ export const verifyRegistrationOtp = async (req, res) => {
         );
 
         if (!otpIsValid) {
-            pendingRegistration.attempts += 1;
-            await pendingRegistration.save();
+            await PendingRegistration.updateOne(
+                { _id: pendingRegistration._id, codeHash: pendingRegistration.codeHash, attempts: { $lt: 5 } },
+                { $inc: { attempts: 1 } }
+            );
 
             return res.status(401).json({
                 message: 'Invalid or expired registration OTP'
             });
         }
 
-        const user = await User.create({
-            studentId: pendingRegistration.studentId,
-            firstName: pendingRegistration.firstName,
-            middleName: pendingRegistration.middleName,
-            lastName: pendingRegistration.lastName,
-            email: pendingRegistration.email,
-            password: pendingRegistration.passwordHash
-        });
+        const consumedAt = new Date();
+        const claimed = await PendingRegistration.updateOne(
+            { _id: pendingRegistration._id, codeHash: pendingRegistration.codeHash, consumedAt: null, expiresAt: { $gt: consumedAt }, attempts: { $lt: 5 } },
+            { $set: { consumedAt } }
+        );
+        if (claimed.modifiedCount !== 1) {
+            return res.status(401).json({ message: 'Invalid, expired, or already used registration OTP' });
+        }
+
+        let user;
+        try {
+            user = await User.create({
+                studentId: pendingRegistration.studentId,
+                firstName: pendingRegistration.firstName,
+                middleName: pendingRegistration.middleName,
+                lastName: pendingRegistration.lastName,
+                email: pendingRegistration.email,
+                password: pendingRegistration.passwordHash
+            });
+        } catch (error) {
+            await PendingRegistration.updateOne(
+                { _id: pendingRegistration._id, consumedAt, codeHash: pendingRegistration.codeHash },
+                { $set: { consumedAt: null } }
+            );
+            throw error;
+        }
 
         await PendingRegistration.deleteOne({ _id: pendingRegistration._id });
 
@@ -325,11 +417,11 @@ export const verifyRegistrationOtp = async (req, res) => {
     } catch (error) {
         if (error?.code === 11000) {
             return res.status(409).json({
-                message: 'A user with this email or student ID already exists'
+                message: 'A user with this email already exists'
             });
         }
 
-        console.error(error);
+        console.error('Registration OTP verification failed');
 
         return res.status(500).json({
             message: 'Internal server error'
@@ -341,7 +433,7 @@ export const resendRegistrationOtp = async (req, res) => {
     try {
         const { challengeId } = req.body || {};
 
-        if (!challengeId || !mongoose.isValidObjectId(challengeId)) {
+        if (typeof challengeId !== 'string' || !mongoose.isValidObjectId(challengeId)) {
             return res.status(400).json({
                 message: 'A valid challenge ID is required'
             });
@@ -349,7 +441,7 @@ export const resendRegistrationOtp = async (req, res) => {
 
         const pendingRegistration = await PendingRegistration.findById(challengeId);
 
-        if (!pendingRegistration) {
+        if (!pendingRegistration || pendingRegistration.consumedAt) {
             return res.status(404).json({
                 message: 'Pending registration not found or expired'
             });
@@ -359,6 +451,10 @@ export const resendRegistrationOtp = async (req, res) => {
             return res.status(410).json({
                 message: 'Registration challenge has expired. Please register again.'
             });
+        }
+
+        if (pendingRegistration.attempts >= 5) {
+            return res.status(429).json({ message: 'Too many incorrect registration OTP attempts' });
         }
 
         const resendCooldownSeconds = Number(process.env.OTP_RESEND_SECONDS || 60);
@@ -379,33 +475,21 @@ export const resendRegistrationOtp = async (req, res) => {
             });
         }
 
-        const otp = generateOtp();
-        const codeHash = await hashOtp(otp);
-        const now = new Date();
-        const expiresAt = new Date(
-            now.getTime() + Number(process.env.OTP_EXPIRES_MINUTES || 5) * 60 * 1000
-        );
-
-        pendingRegistration.codeHash = codeHash;
-        pendingRegistration.expiresAt = expiresAt;
-        pendingRegistration.attempts = 0;
-        pendingRegistration.lastSentAt = now;
-        pendingRegistration.resendCount += 1;
-        await pendingRegistration.save();
-
-        await sendOtpEmail({
+        const updated = await resendOtpChallenge({
+            model: PendingRegistration,
+            challenge: pendingRegistration,
             recipientEmail: pendingRegistration.email,
             recipientName: pendingRegistration.firstName,
-            otp,
             purpose: 'registration'
         });
+        if (!updated) return res.status(409).json({ message: 'This challenge changed. Please try again.' });
 
         return res.status(200).json({
             message: 'Registration OTP resent',
-            challengeId: pendingRegistration._id.toString()
+            ...challengeDetails(updated)
         });
     } catch (error) {
-        console.error(error);
+        console.error('Registration OTP resend failed');
 
         return res.status(500).json({
             message: 'Internal server error'

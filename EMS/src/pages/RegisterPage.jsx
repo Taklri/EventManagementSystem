@@ -1,207 +1,129 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import bgImage from '../assets/bgimage.png';
-import nuLogo from '../assets/NULOGO.svg';
-import eyeIcon from '../assets/eye.svg';
-import eyeOffIcon from '../assets/eye-off.svg';
+import AuthLayout from '../components/AuthLayout';
+import PasswordVisibilityToggle from '../components/PasswordVisibilityToggle';
+import { authApi } from '../lib/api';
+import { sanitizeName, sanitizeStudentId, validateEmail, validateName, validatePassword, validateStudentId } from '../lib/authValidation';
 
-function RegisterPage() {
-  const navigate = useNavigate();
+const initialValues = { studentId: '', firstName: '', middleName: '', lastName: '', email: '', password: '', confirmPassword: '' };
 
-  // USER INPUTS
-  const [studentId, setStudentId] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [middleName, setMiddleName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [rePassword, setRePassword] = useState('');
-
-  // SHOW OR HIDE
-  const [showPass, setShowPass] = useState(false);
-  const [showRePass, setShowRePass] = useState(false);
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-
-    if (password !== rePassword) {
-      alert('Passwords do not match.');
-      return;
-    }
-    console.log(studentId, firstName, middleName, lastName, email, password);
-
-    navigate('/');
+function getErrors(values) {
+  return {
+    studentId: validateStudentId(values.studentId),
+    firstName: validateName(values.firstName),
+    middleName: validateName(values.middleName, false),
+    lastName: validateName(values.lastName),
+    email: validateEmail(values.email),
+    password: validatePassword(values.password),
+    confirmPassword: !values.confirmPassword ? 'Please confirm your password.' : values.password !== values.confirmPassword ? 'Passwords do not match.' : '',
   };
+}
 
+export default function RegisterPage() {
+  const navigate = useNavigate();
+  const [values, setValues] = useState(initialValues);
+  const [touched, setTouched] = useState({});
+  const [rejectedInput, setRejectedInput] = useState({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const errors = getErrors(values);
 
-  let passType = 'password';
-  let passIcon = eyeIcon;
-  if (showPass === true) {
-    passType = 'text';
-    passIcon = eyeOffIcon;
+  function update(field, rawValue) {
+    let value = rawValue;
+    let wasRejected = false;
+    if (field === 'studentId') {
+      value = sanitizeStudentId(rawValue);
+      wasRejected = value !== rawValue;
+    } else if (['firstName', 'middleName', 'lastName'].includes(field)) {
+      value = sanitizeName(rawValue);
+      wasRejected = value !== rawValue;
+    }
+    setValues((current) => ({ ...current, [field]: value }));
+    setTouched((current) => ({ ...current, [field]: true }));
+    setRejectedInput((current) => ({ ...current, [field]: wasRejected }));
+    setFormError('');
   }
 
-  let rePassType = 'password';
-  let rePassIcon = eyeIcon;
-  if (showRePass === true) {
-    rePassType = 'text';
-    rePassIcon = eyeOffIcon;
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (isSubmitting) return;
+    setTouched(Object.fromEntries(Object.keys(initialValues).map((field) => [field, true])));
+    const invalidField = Object.entries(getErrors(values)).find(([, error]) => error);
+    if (invalidField) {
+      event.currentTarget.elements.namedItem(invalidField[0])?.focus();
+      return;
+    }
+    setIsSubmitting(true);
+    setFormError('');
+    try {
+      const payload = { ...values };
+      delete payload.confirmPassword;
+      const result = await authApi.register({ ...payload, studentId: payload.studentId.trim(), firstName: payload.firstName.trim(), middleName: payload.middleName.trim(), lastName: payload.lastName.trim(), email: payload.email.trim() });
+      navigate('/register/otp', { state: { challengeId: result.challengeId, expiresAt: result.expiresAt, retryAfterSeconds: result.retryAfterSeconds, email: values.email.trim() } });
+    } catch (error) {
+      setFormError(error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function fieldError(field) {
+    if (rejectedInput[field]) return 'That character is not allowed and was removed.';
+    return touched[field] ? errors[field] : '';
+  }
+
+  function fieldClass(field) {
+    return `w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-nu-navy/20 ${fieldError(field) ? 'border-red-500 focus:border-red-500' : 'border-slate-200 focus:border-nu-navy'}`;
+  }
+
+  function field(id, label, fieldName, options = {}) {
+    const error = fieldError(fieldName);
+    return <div className={options.className || ''}>
+      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-slate-700">{label}{options.optional ? <span className="ml-1 font-normal text-slate-400">(optional)</span> : <span className="ml-1 text-red-600" aria-hidden="true">*</span>}</label>
+      <input id={id} name={fieldName} required={!options.optional} type={options.type || 'text'} autoComplete={options.autoComplete} inputMode={options.inputMode} maxLength={options.maxLength}
+        value={values[fieldName]} onChange={(event) => update(fieldName, event.target.value)} onBlur={() => setTouched((current) => ({ ...current, [fieldName]: true }))}
+        aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} placeholder={options.placeholder || ''} className={fieldClass(fieldName)} />
+      {error && <p aria-live="polite" id={`${id}-error`} className="mt-1 text-[11px] leading-4 text-red-700">{error}</p>}
+    </div>;
   }
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-between px-[7vw] py-5 font-sans bg-cover bg-center"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(27, 71, 153, 0.47), rgba(250, 252, 255, 0.36)), url(' + bgImage + ')',
-      }}
-    >
-      {/*title text*/}
-      <div className="self-end mb-10 text-white">
-        <p className="mb-1.5 text-sm text-nu-gold">National University</p>
-        <h1 className="text-7xl font-extrabold leading-[1.05]">
-          Event <br /> Management
-        </h1>
-        <div className="h-1 mt-[18px] bg-nu-gold"></div>
-      </div>
-
-
-      <div className="w-[550px] h-[850px] mr-[60px] px-10 pt-8 pb-[26px] bg-white rounded-[18px]">
-        <div className="text-center">
-          <img src={nuLogo} alt="NU Logo" className="w-[76px] mx-auto" />
-          <p className="mt-1.5 text-xs text-nu-navy">National University</p>
-          <h2 className="mt-3.5 mb-1 text-[30px] font-bold text-nu-dark">Create your account</h2>
-          <p className="text-sm text-gray-500">Register with your student details to access MyNU.</p>
+    <AuthLayout>
+      <h2 className="text-center text-2xl font-bold text-nu-dark">Create your account</h2>
+      <p className="mb-5 mt-1 text-center text-sm text-slate-500">Register with your student details to get started.</p>
+      <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+        {field('student-id', 'Student ID', 'studentId', { placeholder: '2026-123456', maxLength: 11 })}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {field('first-name', 'First name', 'firstName', { autoComplete: 'given-name', className: 'sm:col-span-2' })}
+          {field('middle-name', 'Middle name', 'middleName', { optional: true, autoComplete: 'additional-name' })}
+          {field('last-name', 'Last name', 'lastName', { autoComplete: 'family-name' })}
         </div>
-
-        {/*form*/}
-        <form onSubmit={handleSubmit} className="mt-7">
-          <label className="block mb-2 text-sm font-medium">
-            Student ID <span className="text-red-600">*</span>
-          </label>
-          <input
-            type="number"
-            placeholder="2026-123456"
-            value={studentId}
-            onChange={(event) => setStudentId(event.target.value)}
-            className="w-full h-10 px-3.5 text-sm border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-            required
-          />
-          <p className="mt-2 text-xs text-gray-500">Found on your NU ID or enrollment form.</p>
-
-          {/*first, middle and last name side by side*/}
-          <div className="flex gap-3.5 mt-5">
-            <div className="flex-1">
-              <label className="block mb-2 text-sm font-medium">
-                First name <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(event) => setFirstName(event.target.value)}
-                className="w-full h-10 px-3.5 text-sm border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-                required
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block mb-2 text-sm font-medium">
-                Middle name <span className="text-[10px] text-gray-500">(optional)</span>
-              </label>
-              <input
-                type="text"
-                value={middleName}
-                onChange={(event) => setMiddleName(event.target.value)}
-                className="w-full h-10 px-3.5 text-sm border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block mb-2 text-sm font-medium">
-                Last name <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="text"
-                value={lastName}
-                onChange={(event) => setLastName(event.target.value)}
-                className="w-full h-10 px-3.5 text-sm border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-                required
-              />
-            </div>
+        {field('register-email', 'Email', 'email', { type: 'email', autoComplete: 'email', inputMode: 'email', placeholder: 'name@example.com' })}
+        <div>
+          <label htmlFor="register-password" className="mb-1.5 block text-xs font-medium text-slate-700">Password<span className="ml-1 text-red-600" aria-hidden="true">*</span></label>
+          <div className={`flex rounded-lg border ${fieldError('password') ? 'border-red-500' : 'border-slate-200'} focus-within:border-nu-navy focus-within:ring-2 focus-within:ring-nu-navy/20`}>
+            <input id="register-password" name="password" required type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={values.password} onChange={(event) => update('password', event.target.value)} onBlur={() => setTouched((current) => ({ ...current, password: true }))} aria-invalid={Boolean(fieldError('password'))} aria-describedby={fieldError('password') ? 'password-guidance password-error' : 'password-guidance'} className="min-w-0 flex-1 rounded-l-lg px-3 py-2.5 text-sm outline-none" placeholder="Create a password" />
+            <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((current) => !current)} controls="register-password" />
           </div>
-
-          <label className="block mt-5 mb-2 text-sm font-medium">
-            Email <span className="text-red-600">*</span>
-          </label>
-          <input
-            type="email"
-            placeholder="name@students.nu-moa.edu.ph"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="w-full h-10 px-3.5 text-sm border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-            required
-          />
-
-          <label className="block mt-5 mb-2 text-sm font-medium">
-            Password <span className="text-red-600">*</span>
-          </label>
-          <div className="relative">
-            <input
-              type={passType}
-              placeholder="Create a password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={8}
-              className="w-full h-10 pl-3.5 pr-12 text-sm border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPass(!showPass)}
-              className="absolute inset-y-0 right-3.5 flex items-center cursor-pointer"
-            >
-              <img src={passIcon} alt="Show or hide password" className="w-5 h-5" />
-            </button>
+          <p id="password-guidance" className="mt-1 text-[11px] text-slate-500">At least 8 characters with uppercase, lowercase, number, and symbol.</p>
+          {fieldError('password') && <p aria-live="polite" id="password-error" className="mt-1 text-[11px] text-red-700">{fieldError('password')}</p>}
+        </div>
+        <div>
+          <label htmlFor="register-confirm-password" className="mb-1.5 block text-xs font-medium text-slate-700">Confirm password<span className="ml-1 text-red-600" aria-hidden="true">*</span></label>
+          <div className={`flex rounded-lg border ${fieldError('confirmPassword') ? 'border-red-500' : 'border-slate-200'} focus-within:border-nu-navy focus-within:ring-2 focus-within:ring-nu-navy/20`}>
+            <input id="register-confirm-password" name="confirmPassword" required type={showConfirmation ? 'text' : 'password'} autoComplete="new-password" value={values.confirmPassword} onChange={(event) => update('confirmPassword', event.target.value)} onBlur={() => setTouched((current) => ({ ...current, confirmPassword: true }))} aria-invalid={Boolean(fieldError('confirmPassword'))} aria-describedby={fieldError('confirmPassword') ? 'confirm-password-error' : undefined} className="min-w-0 flex-1 rounded-l-lg px-3 py-2.5 text-sm outline-none" placeholder="Enter your password again" />
+            <PasswordVisibilityToggle visible={showConfirmation} onToggle={() => setShowConfirmation((current) => !current)} controls="register-confirm-password" label="confirmation password" />
           </div>
-          <p className="mt-2 text-xs text-gray-500">At least 8 characters.</p>
-
-          <label className="block mt-5 mb-2 text-sm font-medium">
-            Re-Password <span className="text-red-600">*</span>
-          </label>
-          <div className="relative">
-            <input
-              type={rePassType}
-              placeholder="Re-enter your password"
-              value={rePassword}
-              onChange={(event) => setRePassword(event.target.value)}
-              className="w-full h-10 pl-3.5 pr-12 text-sm border border-gray-200 rounded-[10px] outline-none focus:border-nu-navy"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowRePass(!showRePass)}
-              className="absolute inset-y-0 right-3.5 flex items-center cursor-pointer"
-            >
-              <img src={rePassIcon} alt="Show or hide password" className="w-5 h-5" />
-            </button>
-          </div>
-
-          
-          <button
-            type="submit"
-            className="w-full h-[46px] mt-[26px] text-base font-bold text-white bg-nu-navy rounded-[10px] cursor-pointer hover:bg-nu-gold hover:text-nu-dark"
-          >
-            Create Account
-          </button>
-        </form>
-
-        <p className="mt-4 text-center text-sm text-gray-600">
-          Already have an account?{' '}
-          <Link to="/" className="font-bold text-nu-dark hover:text-nu-gold-dark">
-            Log In
-          </Link>
-        </p>
-      </div>
-    </div>
+          {fieldError('confirmPassword') && <p aria-live="polite" id="confirm-password-error" className="mt-1 text-[11px] text-red-700">{fieldError('confirmPassword')}</p>}
+        </div>
+        {formError && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-800">{formError}</p>}
+        <button type="submit" disabled={isSubmitting} className="w-full rounded-lg bg-nu-navy px-4 py-3 text-sm font-semibold text-white transition hover:bg-nu-dark focus:outline-none focus:ring-2 focus:ring-nu-navy focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
+          {isSubmitting ? 'Sending verification code…' : 'Create Account'}
+        </button>
+      </form>
+      <p className="mt-5 text-center text-sm text-slate-600">Already have an account? <Link to="/" className="font-semibold text-nu-navy underline-offset-2 hover:underline">Log in</Link></p>
+    </AuthLayout>
   );
 }
-
-export default RegisterPage;

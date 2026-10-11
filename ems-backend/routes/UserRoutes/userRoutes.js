@@ -3,6 +3,7 @@ import { registerUser, updateUser } from '../../controller/userController.js';
 import {
     loginUser,
     verifyLoginOtp,
+    resendLoginOtp,
     verifyRegistrationOtp,
     resendRegistrationOtp,
     refreshAccessToken,
@@ -13,7 +14,8 @@ import {
     otpRateLimiter,
     registerRateLimiter,
     registrationOtpRateLimiter,
-    registrationResendRateLimiter
+    registrationResendRateLimiter,
+    loginResendRateLimiter
 } from '../../middleware/rateLimiter.js';
 import { authenticate } from '../../middleware/auth.js';
 
@@ -24,6 +26,7 @@ router.post('/', registerRateLimiter, registerUser);
 router.put('/:id', authenticate, updateUser);
 router.post('/login', loginRateLimiter, loginUser);
 router.post('/verify-otp', otpRateLimiter,  verifyLoginOtp);
+router.post('/resend-login-otp', loginResendRateLimiter, resendLoginOtp);
 router.post('/verify-registration-otp', registrationOtpRateLimiter, verifyRegistrationOtp);
 router.post('/resend-registration-otp', registrationResendRateLimiter, resendRegistrationOtp);
 router.post('/refresh', refreshAccessToken);

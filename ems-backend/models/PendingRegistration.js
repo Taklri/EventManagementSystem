@@ -50,6 +50,10 @@ const pendingRegistrationSchema = new mongoose.Schema({
     resendCount: {
         type: Number,
         default: 0
+    },
+    consumedAt: {
+        type: Date,
+        default: null
     }
 }, {
     timestamps: true

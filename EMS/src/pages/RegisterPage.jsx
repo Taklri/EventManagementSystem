@@ -28,6 +28,7 @@ export default function RegisterPage() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  const [serverFieldErrors, setServerFieldErrors] = useState({});
   const errors = getErrors(values);
 
   function update(field, rawValue) {
@@ -43,6 +44,12 @@ export default function RegisterPage() {
     setValues((current) => ({ ...current, [field]: value }));
     setTouched((current) => ({ ...current, [field]: true }));
     setRejectedInput((current) => ({ ...current, [field]: wasRejected }));
+    setServerFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
     setFormError('');
   }
 
@@ -57,13 +64,20 @@ export default function RegisterPage() {
     }
     setIsSubmitting(true);
     setFormError('');
+    setServerFieldErrors({});
     try {
       const payload = { ...values };
       delete payload.confirmPassword;
       const result = await authApi.register({ ...payload, studentId: payload.studentId.trim(), firstName: payload.firstName.trim(), middleName: payload.middleName.trim(), lastName: payload.lastName.trim(), email: payload.email.trim() });
       navigate('/register/otp', { state: { challengeId: result.challengeId, expiresAt: result.expiresAt, retryAfterSeconds: result.retryAfterSeconds, email: values.email.trim() } });
     } catch (error) {
-      setFormError(error.message);
+      if (error.field && Object.prototype.hasOwnProperty.call(initialValues, error.field)) {
+        setServerFieldErrors({ [error.field]: error.message });
+        setTouched((current) => ({ ...current, [error.field]: true }));
+        event.currentTarget.elements.namedItem(error.field)?.focus();
+      } else {
+        setFormError(error.message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -71,6 +85,7 @@ export default function RegisterPage() {
 
   function fieldError(field) {
     if (rejectedInput[field]) return 'That character is not allowed and was removed.';
+    if (serverFieldErrors[field]) return serverFieldErrors[field];
     return touched[field] ? errors[field] : '';
   }
 

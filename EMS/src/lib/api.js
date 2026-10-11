@@ -28,6 +28,7 @@ export async function apiRequest(path, { body, token, ...options } = {}) {
   if (!response.ok) {
     const error = new Error(data.message || 'The request could not be completed.');
     error.status = response.status;
+    error.field = data.field;
     error.retryAfterSeconds = data.retryAfterSeconds || Number(response.headers.get('Retry-After')) || undefined;
     throw error;
   }

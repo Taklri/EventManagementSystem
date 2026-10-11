@@ -50,7 +50,8 @@ Registration defaults new users to the `student` role. The current user route do
 - Collections use an `events` or `users` property.
 - Event mutation and lookup responses use an `event` property.
 - Authentication responses currently return the access token using the key `accesstoken`.
-- Validation, authentication, authorization, not-found, conflict, rate-limit, and server failures return a `message` property.
+- Validation, authentication, authorization, not-found, conflict, rate-limit, and server failures return a `message` property. Registration conflicts may also return `field` (`studentId` or `email`) so the frontend can place the conflict beside the affected input.
+- Student IDs are unique across `User` records. Duplicate student IDs return `409` with a student-ID field error, including when a concurrent registration reaches OTP verification first.
 - Do not change response names casually; coordinate frontend and backend changes when a contract must change.
 
 ## Protected request convention

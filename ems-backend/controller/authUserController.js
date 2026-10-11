@@ -416,8 +416,16 @@ export const verifyRegistrationOtp = async (req, res) => {
         });
     } catch (error) {
         if (error?.code === 11000) {
+            if (error.keyPattern?.studentId || error.keyValue?.studentId) {
+                return res.status(409).json({
+                    message: 'A user with this student ID already exists',
+                    field: 'studentId'
+                });
+            }
+
             return res.status(409).json({
-                message: 'A user with this email already exists'
+                message: 'A user with this email already exists',
+                field: 'email'
             });
         }
 

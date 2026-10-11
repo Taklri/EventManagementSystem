@@ -1,0 +1,46 @@
+# Backend Agent Guide
+
+## Scope
+
+This directory contains the Node.js, Express, and MongoDB backend for the Event Management System.
+
+Keep API, authentication, database, middleware, and email-service changes here. Coordinate with the frontend when request or response contracts change.
+
+## Backend structure
+
+- `server.js` — application startup, global middleware, database startup, and API mounting.
+- `routes/` — HTTP route definitions and route-level middleware.
+- `controller/` — request handling and response orchestration.
+- `services/` — integrations and reusable business services such as Brevo email.
+- `models/` — Mongoose schemas and persistence models.
+- `middleware/` — authentication, authorization, and rate limiting.
+- `utils/` — reusable domain utilities such as event-status calculation and OTP helpers.
+- `config/` — infrastructure configuration such as the database connection.
+
+Preserve this separation. Do not put database queries in route definitions or duplicate authentication logic in individual controllers.
+
+## Current authorization rules
+
+- `student` and `admin` are the supported roles.
+- Event creation, update, and archive operations are admin-only.
+- Event reads are currently available through public routes unless a route explicitly adds authentication.
+- Authorization must remain enforced on the server, not only in the frontend.
+
+## Security and configuration
+
+- Load private configuration from environment variables.
+- Never commit or print `.env` values.
+- Preserve password hashing, OTP handling, JWT handling, cookie configuration, credentialed CORS, and rate limiting.
+- Return appropriate `401` responses for unauthenticated requests and `403` responses for authenticated users without permission.
+- Validate identifiers, request bodies, dates, and other user-controlled values before persistence or sensitive operations.
+
+## Backend verification
+
+Run from `ems-backend/`:
+
+```text
+npm run dev
+npm start
+```
+
+There is currently no automated backend test suite. For API changes, perform an appropriate smoke check and report exactly what was verified.

@@ -1,0 +1,66 @@
+# Security Reference
+
+## Authentication flow
+
+1. Login validates the normalized email and bcrypt password hash.
+2. Login creates a hashed six-digit OTP and sends it through Brevo.
+3. Login OTP verification checks existence, consumption, expiration, attempt count, and code validity.
+4. Successful verification returns a short-lived access token and sets the refresh-token cookie.
+5. Protected routes validate the access token from `Authorization: Bearer <token>`.
+6. Refresh verifies the `refreshToken` cookie and issues a new access token plus refresh cookie.
+7. Logout clears the `refreshToken` cookie.
+
+Registration follows a similar OTP flow using `PendingRegistration`; the user is created only after registration OTP verification.
+
+## Token and cookie behavior
+
+- Access tokens contain the user ID in `sub` and the role in `role`.
+- Access tokens expire after 15 minutes.
+- Refresh tokens expire after 7 days.
+- The refresh cookie is named `refreshToken`.
+- The refresh cookie is `httpOnly`.
+- The refresh cookie uses `sameSite: strict`.
+- The refresh cookie is `secure` when `NODE_ENV=production`.
+
+## Authorization behavior
+
+- Missing or invalid bearer authentication returns `401`.
+- Authenticated users without an allowed role return `403`.
+- Event creation, update, and archive operations require the `admin` role.
+- Profile updates allow an admin to update any profile or a user to update their own profile.
+
+## Rate limits
+
+- All `/api` routes use the global rate limiter: 100 requests per 10 minutes.
+- Login: 5 requests per 15 minutes.
+- Login OTP verification: 5 requests per 10 minutes.
+- Registration: 5 requests per hour.
+- Registration OTP verification: 5 requests per 10 minutes.
+- Registration OTP resend: 3 requests per hour, with an application-level cooldown and resend count.
+- OTP records also enforce a maximum of 5 incorrect attempts.
+
+## Environment variables
+
+The backend reads private configuration from environment variables, including:
+
+- `PORT`
+- `MONGODB_URI`
+- `FRONTEND_URL`
+- `NODE_ENV`
+- `JWT_SECRET_KEY`
+- `JWT_REFRESH_SECRET_KEY`
+- `OTP_EXPIRES_MINUTES`
+- `OTP_RESEND_SECONDS`
+- `BREVO_API_KEY`
+- `BREVO_SENDER_EMAIL`
+- `BREVO_SENDER_NAME`
+
+Never copy values from `.env` into documentation, AI skills, logs, responses, commits, or screenshots.
+
+## Security change requirements
+
+- Keep password and OTP values hashed at rest.
+- Do not log passwords, OTPs, tokens, API keys, or database credentials.
+- Preserve credentialed CORS behavior for the configured frontend origin.
+- Keep authorization checks on the server even when the frontend hides controls.
+- Verify both successful and denied authentication/authorization paths after security-sensitive changes.

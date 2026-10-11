@@ -1,14 +1,32 @@
 import express from 'express';
 import { registerUser, updateUser } from '../../controller/userController.js';
-import { loginUser, verifyLoginOtp } from '../../controller/authUserController.js';
-import { loginRateLimiter, otpRateLimiter } from '../../middleware/rateLimiter.js';
+import {
+    loginUser,
+    verifyLoginOtp,
+    verifyRegistrationOtp,
+    resendRegistrationOtp,
+    refreshAccessToken,
+    logoutUser
+} from '../../controller/authUserController.js';
+import {
+    loginRateLimiter,
+    otpRateLimiter,
+    registerRateLimiter,
+    registrationOtpRateLimiter,
+    registrationResendRateLimiter
+} from '../../middleware/rateLimiter.js';
+import { authenticate } from '../../middleware/auth.js';
 
 
 const router = express.Router();
 
-router.post('/', registerUser);
-router.put('/:id', updateUser);
+router.post('/', registerRateLimiter, registerUser);
+router.put('/:id', authenticate, updateUser);
 router.post('/login', loginRateLimiter, loginUser);
 router.post('/verify-otp', otpRateLimiter,  verifyLoginOtp);
+router.post('/verify-registration-otp', registrationOtpRateLimiter, verifyRegistrationOtp);
+router.post('/resend-registration-otp', registrationResendRateLimiter, resendRegistrationOtp);
+router.post('/refresh', refreshAccessToken);
+router.post('/logout', logoutUser);
 
 export default router;

@@ -50,12 +50,27 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    const userExist = await User.findOne({ email: normalizedEmail });
+    const userExist = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { studentId: normalizedStudentId },
+      ],
+    });
 
     if (userExist) {
-      return res.status(409).json({
-        message: "A user with this email already exists",
-      });
+      if (userExist.email === normalizedEmail) {
+        return res.status(409).json({
+          message: "A user with this email already exists",
+          field: "email",
+        });
+      }
+
+      if (userExist.studentId === normalizedStudentId) {
+        return res.status(409).json({
+          message: "A user with this student ID already exists",
+          field: "studentId",
+        });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -107,7 +122,17 @@ export const registerUser = async (req, res) => {
     });
   } catch (error) {
     if (error?.code === 11000) {
-      return res.status(409).json({ message: "A user with this email already exists" });
+      if (error.keyPattern?.studentId || error.keyValue?.studentId) {
+        return res.status(409).json({
+          message: "A user with this student ID already exists",
+          field: "studentId",
+        });
+      }
+
+      return res.status(409).json({
+        message: "A user with this email already exists",
+        field: "email",
+      });
     }
     console.error("Registration request failed");
 

@@ -145,6 +145,40 @@ test('registration handles duplicate email and removes a challenge if email deli
   assert.equal(PendingRegistration.deleteOne.mock.callCount(), 1);
 });
 
+test('registration rejects a student ID already assigned to another user', async () => {
+  stub(User, 'findOne', async (filter) => (
+    filter.$or.some((condition) => condition.studentId === registration.studentId) ? user() : null
+  ));
+
+  const res = await invoke(registerUser, {
+    ...registration,
+    email: 'another-student@example.invalid',
+  });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.field, 'studentId');
+  assert.match(res.body.message, /student ID already exists/i);
+  assert.equal(PendingRegistration.findOneAndUpdate.mock.callCount(), 0);
+});
+
+test('registration OTP reports a duplicate student ID from the database constraint', async () => {
+  stub(PendingRegistration, 'findById', async () => challenge());
+  stub(PendingRegistration, 'updateOne', async () => ({ modifiedCount: 1 }));
+  stub(User, 'create', async () => {
+    const error = new Error('duplicate student ID');
+    error.code = 11000;
+    error.keyPattern = { studentId: 1 };
+    throw error;
+  });
+
+  const res = await invoke(verifyRegistrationOtp, { challengeId: id.toString(), otp });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.field, 'studentId');
+  assert.match(res.body.message, /student ID already exists/i);
+  assert.equal(PendingRegistration.updateOne.mock.callCount(), 2);
+});
+
 test('login rejects malformed input and uses the same generic error for unknown users and incorrect passwords', async () => {
   for (const body of [{}, { email: 123, password }, { email: registration.email, password: {} }, { email: 'invalid', password }]) {
     assert.equal((await invoke(loginUser, body)).statusCode, 400);

@@ -1,6 +1,9 @@
-import Event from "../models/Event.js";
+import Event, { EVENT_TYPES } from "../models/Event.js";
 import User from "../models/User.js";
 import { withStatus } from "../utils/eventStatus.js";
+import mongoose from "mongoose";
+import { fileTypeFromBuffer } from "file-type";
+import { uploadEventImage, removeEventImage } from "../services/eventImageService.js";
 
 const DEFAULT_EVENT_PAGE_SIZE = 9;
 const MAX_EVENT_PAGE_SIZE = 24;
@@ -44,65 +47,316 @@ const buildEventFilter = ({ search = "", status = "all", now = new Date() } = {}
   return filter;
 };
 
-//creating eventss (labelan ko lang para di malito)
+const textField = (value, field, min, max) => {
+  if (typeof value !== "string") return { error: `${field} is required` };
+  const trimmed = value.trim();
+  if (trimmed.length < min || trimmed.length > max) {
+    return { error: `${field} must be ${min} to ${max} characters long` };
+  }
+  return { value: trimmed };
+};
+
+const parseEventDate = (value) => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value !== "string") return null;
+  // HTML datetime-local values are campus time; explicit offsets and Z remain absolute.
+  const local = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (local) {
+    const [, year, month, day, hour, minute, second = "00"] = local;
+    const campusAsUtc = Date.UTC(+year, +month - 1, +day, +hour, +minute, +second);
+    const check = new Date(campusAsUtc);
+    if (check.getUTCFullYear() !== +year || check.getUTCMonth() + 1 !== +month
+      || check.getUTCDate() !== +day || check.getUTCHours() !== +hour
+      || check.getUTCMinutes() !== +minute || check.getUTCSeconds() !== +second) return null;
+    return new Date(campusAsUtc - 8 * 60 * 60 * 1000);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value)) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getCampusDay = (date) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const getPart = (type) => parts.find((part) => part.type === type)?.value;
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+};
+
+const parseJsonField = (value, field, fallback) => {
+  if (value === undefined) return fallback;
+  if (Array.isArray(value) || (value && typeof value === "object")) return value;
+  if (typeof value !== "string") return { error: `${field} must be valid JSON` };
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { error: `${field} must be valid JSON` };
+  }
+};
+
+const normalizeStringList = (value, field, maximum, itemMaximum) => {
+  if (!Array.isArray(value)) return { error: `${field} must be an array` };
+  if (value.length > maximum) return { error: `${field} can have up to ${maximum} items` };
+  const list = [];
+  for (const item of value) {
+    if (typeof item !== "string") return { error: `${field} must contain text values` };
+    const text = item.trim();
+    if (!text || text.length > itemMaximum) {
+      return { error: `${field} items must be 1 to ${itemMaximum} characters long` };
+    }
+    list.push(text);
+  }
+  return { value: [...new Set(list)] };
+};
+
+const readStructuredFields = (body, { existing = null, rangeStart = null, rangeEnd = null } = {}) => {
+  const eventType = body.eventType === undefined ? existing?.eventType || "Other" : body.eventType;
+  if (typeof eventType !== "string" || !EVENT_TYPES.includes(eventType)) {
+    return { error: "Choose a valid event type", field: "eventType" };
+  }
+
+  const parsedTags = parseJsonField(body.tags, "Tags", existing?.tags || []);
+  const parsedAgenda = parseJsonField(body.agenda, "Agenda", existing?.agenda || []);
+  const parsedSpeakers = parseJsonField(body.speakers, "Speakers", existing?.speakers || []);
+  const parsedRequirements = parseJsonField(
+    body.requirements,
+    "Requirements",
+    existing?.requirements || [],
+  );
+  const parsedReminders = parseJsonField(body.reminders, "Reminders", existing?.reminders || []);
+  for (const [field, value] of [
+    ["tags", parsedTags],
+    ["agenda", parsedAgenda],
+    ["speakers", parsedSpeakers],
+    ["requirements", parsedRequirements],
+    ["reminders", parsedReminders],
+  ]) {
+    if (value?.error) return { error: value.error, field };
+  }
+
+  const tags = normalizeStringList(parsedTags, "Tags", 8, 40);
+  const requirements = normalizeStringList(parsedRequirements, "Requirements", 20, 240);
+  const reminders = normalizeStringList(parsedReminders, "Reminders", 20, 240);
+  if (tags.error) return { error: tags.error, field: "tags" };
+  if (requirements.error) return { error: requirements.error, field: "requirements" };
+  if (reminders.error) return { error: reminders.error, field: "reminders" };
+
+  if (!Array.isArray(parsedSpeakers) || parsedSpeakers.length > 30) {
+    return { error: "Speakers can have up to 30 items", field: "speakers" };
+  }
+  const speakerKeys = new Set();
+  const speakers = [];
+  for (const speaker of parsedSpeakers) {
+    if (!speaker || typeof speaker !== "object") {
+      return { error: "Each speaker must be an object", field: "speakers" };
+    }
+    const clientKey = typeof speaker.clientKey === "string" ? speaker.clientKey.trim() : "";
+    const name = typeof speaker.name === "string" ? speaker.name.trim() : "";
+    const role = typeof speaker.role === "string" ? speaker.role.trim() : "";
+    if (!clientKey || clientKey.length > 80 || speakerKeys.has(clientKey)) {
+      return { error: "Each speaker needs a unique key", field: "speakers" };
+    }
+    if (name.length < 2 || name.length > 120 || role.length < 2 || role.length > 120) {
+      return { error: "Speaker names and roles must be 2 to 120 characters long", field: "speakers" };
+    }
+    speakerKeys.add(clientKey);
+    const oldSpeaker = existing?.speakers?.find((item) => item.clientKey === clientKey);
+    speakers.push({
+      clientKey,
+      name,
+      role,
+      ...(oldSpeaker?.photoUrl ? { photoUrl: oldSpeaker.photoUrl } : {}),
+      ...(oldSpeaker?.photoPublicId ? { photoPublicId: oldSpeaker.photoPublicId } : {}),
+    });
+  }
+
+  if (!Array.isArray(parsedAgenda) || parsedAgenda.length > 40) {
+    return { error: "Agenda can have up to 40 items", field: "agenda" };
+  }
+  const agenda = [];
+  for (const item of parsedAgenda) {
+    if (!item || typeof item !== "object") {
+      return { error: "Each agenda item must be an object", field: "agenda" };
+    }
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const description = typeof item.description === "string" ? item.description.trim() : "";
+    const startDate = parseEventDate(item.startDate);
+    const endDate = parseEventDate(item.endDate);
+    const speakerKeysForItem = Array.isArray(item.speakerKeys) ? item.speakerKeys : [];
+    if (title.length < 2 || title.length > 160 || description.length > 500) {
+      return { error: "Agenda titles must be 2 to 160 characters long", field: "agenda" };
+    }
+    if (!startDate || !endDate || endDate <= startDate) {
+      return { error: "Each agenda item must have valid times and end after it starts", field: "agenda" };
+    }
+    if ((rangeStart && startDate < rangeStart) || (rangeEnd && endDate > rangeEnd)) {
+      return { error: "Agenda times must fall within the event schedule", field: "agenda" };
+    }
+    if (speakerKeysForItem.some((key) => !speakerKeys.has(key))) {
+      return { error: "Agenda items can only reference speakers in this event", field: "agenda" };
+    }
+    agenda.push({ title, ...(description ? { description } : {}), startDate, endDate, speakerKeys: speakerKeysForItem });
+  }
+
+  const registrationMode = body.registrationMode === undefined
+    ? existing?.registrationMode || "none"
+    : body.registrationMode;
+  if (!["none", "required"].includes(registrationMode)) {
+    return { error: "Registration mode must be none or required", field: "registrationMode" };
+  }
+  let capacity = body.capacity === undefined ? existing?.capacity : body.capacity;
+  if (capacity === "" || capacity === null) capacity = undefined;
+  if (capacity !== undefined) {
+    if (!/^\d+$/.test(String(capacity)) || Number(capacity) < 1 || Number(capacity) > 100000) {
+      return { error: "Capacity must be a whole number between 1 and 100000", field: "capacity" };
+    }
+    capacity = Number(capacity);
+  }
+  if (registrationMode === "none") capacity = undefined;
+
+  return {
+    value: {
+      eventType,
+      tags: tags.value,
+      agenda,
+      speakers,
+      requirements: requirements.value,
+      reminders: reminders.value,
+      registrationMode,
+      ...(capacity === undefined ? {} : { capacity }),
+    },
+  };
+};
+
+const validateImageFile = async (file, field) => {
+  const detected = await fileTypeFromBuffer(file.buffer);
+  const supported = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!detected || !supported.has(detected.mime) || detected.mime !== file.mimetype) {
+    return { error: `${field} must be a JPEG, PNG, or WebP file`, field };
+  }
+  return { value: true };
+};
+
 export const createEvent = async (req, res) => {
   try {
-    const { title, description, location, organizer, startDate, endDate } =
-      req.body;
-
-    const missing = [];
-    if (!title || !String(title).trim()) missing.push("title");
-    if (!description || !String(description).trim())
-      missing.push("description");
-    if (!location || !String(location).trim()) missing.push("location");
-    if (!organizer) missing.push("organizer");
-    if (!startDate) missing.push("startDate");
-    if (!endDate) missing.push("endDate");
-
-    if (missing.length > 0) {
-      return res.status(400).json({
-        message: "Please Fill in all required fields",
-      });
+    const body = req.body || {};
+    const fields = {
+      title: textField(body.title, "Title", 3, 120),
+      description: textField(body.description, "Description", 10, 1000),
+      location: textField(body.location, "Location", 3, 500),
+    };
+    for (const [field, result] of Object.entries(fields)) {
+      if (result.error) return res.status(400).json({ message: result.error, field });
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    if (Number.isNaN(start.getTime())) {
-      return res.status(400).json({
-        message: "Start date is not a valid date",
-      });
-    }
-    if (Number.isNaN(end.getTime())) {
-      return res.status(400).json({
-        message: "End date is not a valid date",
-      });
-    }
-
-    if (end <= start) {
-      return res.status(400).json({
-        message: "End date must be after the start date",
-      });
+    let organizerName;
+    let organizer;
+    if (body.organizerName !== undefined) {
+      const result = textField(body.organizerName, "Organization name", 3, 120);
+      if (result.error) return res.status(400).json({ message: result.error, field: "organizerName" });
+      organizerName = result.value;
+    } else if (typeof body.organizer === "string" && mongoose.isValidObjectId(body.organizer)) {
+      // Existing JSON clients may still submit a user reference as organizer.
+      const user = await User.findById(body.organizer);
+      if (!user) return res.status(400).json({ message: "Organizer not found", field: "organizer" });
+      organizer = user._id;
+      organizerName = [user.firstName, user.middleName, user.lastName].filter(Boolean).join(" ").trim();
+    } else {
+      return res.status(400).json({ message: "Organization name is required", field: "organizerName" });
     }
 
-    const user = await User.findById(organizer);
-
-    if (!user) {
-      return res.status(400).json({
-        message: "Organizer not found",
-      });
+    const start = parseEventDate(body.startDate);
+    const end = parseEventDate(body.endDate);
+    if (!start) return res.status(400).json({ message: "Start date is not a valid date", field: "startDate" });
+    if (!end) return res.status(400).json({ message: "End date is not a valid date", field: "endDate" });
+    const today = getCampusDay(new Date());
+    if (getCampusDay(start) < today) return res.status(400).json({ message: "Start date cannot be before today", field: "startDate" });
+    if (getCampusDay(end) < today) return res.status(400).json({ message: "End date cannot be before today", field: "endDate" });
+    if (end <= start) return res.status(400).json({ message: "End date must be after the start date", field: "endDate" });
+    if (!mongoose.isValidObjectId(req.user?.sub)) {
+      return res.status(401).json({ message: "Invalid creator identity" });
     }
 
-    const event = await Event.create({
-      title,
-      description,
-      location,
-      organizer,
-      startDate: start,
-      endDate: end,
-    });
+    const structured = readStructuredFields(body, { rangeStart: start, rangeEnd: end });
+    if (structured.error) return res.status(400).json({ message: structured.error, field: structured.field });
 
-    await event.populate("organizer", "firstName middleName lastName email");
+    let image;
+    const speakerImages = [];
+    if (req.file) {
+      const validImage = await validateImageFile(req.file, "coverImage");
+      if (validImage.error) return res.status(400).json(validImage);
+      try {
+        image = await uploadEventImage(req.file.buffer);
+      } catch {
+        return res.status(502).json({ message: "Image upload failed. Please try again.", field: "coverImage" });
+      }
+    }
+
+    const speakerImageKeys = parseJsonField(body.speakerImageKeys, "Speaker image keys", []);
+    if (speakerImageKeys.error || !Array.isArray(speakerImageKeys)) {
+      if (image) {
+        try { await removeEventImage(image.imagePublicId); } catch { /* Preserve the validation response. */ }
+      }
+      return res.status(400).json({ message: speakerImageKeys.error || "Speaker image keys must be an array", field: "speakers" });
+    }
+    if (speakerImageKeys.length !== (req.speakerFiles || []).length) {
+      if (image) {
+        try { await removeEventImage(image.imagePublicId); } catch { /* Preserve the validation response. */ }
+      }
+      return res.status(400).json({ message: "Each speaker image must identify its speaker", field: "speakers" });
+    }
+    for (let index = 0; index < (req.speakerFiles || []).length; index += 1) {
+      const key = speakerImageKeys[index];
+      const speaker = structured.value.speakers.find((item) => item.clientKey === key);
+      if (!speaker) {
+        if (image) {
+          try { await removeEventImage(image.imagePublicId); } catch { /* Preserve the validation response. */ }
+        }
+        return res.status(400).json({ message: "Speaker image key does not match a speaker", field: "speakers" });
+      }
+      const file = req.speakerFiles[index];
+      const validImage = await validateImageFile(file, "Speaker image");
+      if (validImage.error) {
+        const uploads = [image, ...speakerImages].filter(Boolean);
+        await Promise.allSettled(uploads.map((uploaded) => removeEventImage(uploaded.imagePublicId)));
+        return res.status(400).json(validImage);
+      }
+      try {
+        const uploaded = await uploadEventImage(file.buffer);
+        speaker.photoUrl = uploaded.imageUrl;
+        speaker.photoPublicId = uploaded.imagePublicId;
+        speakerImages.push(uploaded);
+      } catch {
+        const uploads = [image, ...speakerImages].filter(Boolean);
+        await Promise.allSettled(uploads.map((uploaded) => removeEventImage(uploaded.imagePublicId)));
+        return res.status(502).json({ message: "Speaker image upload failed. Please try again.", field: "speakers" });
+      }
+    }
+
+    let event;
+    try {
+      event = await Event.create({
+        title: fields.title.value,
+        description: fields.description.value,
+        location: fields.location.value,
+        organizerName,
+        ...(organizer ? { organizer } : {}),
+        createdBy: req.user.sub,
+        startDate: start,
+        endDate: end,
+        ...structured.value,
+        ...(image || {}),
+      });
+    } catch (error) {
+      const uploads = [image, ...speakerImages].filter(Boolean);
+      await Promise.allSettled(uploads.map((uploaded) => removeEventImage(uploaded.imagePublicId)));
+      throw error;
+    }
+
+    if (organizer) await event.populate("organizer", "firstName middleName lastName email");
     return res.status(201).json({
       message: "Event created successfully",
       event: withStatus(event),
@@ -253,10 +507,19 @@ export const getEventById = async (req, res) => {
 //edit and archive eventss
 export const updateEvent = async (req, res) => {
   try {
-    const { title, description, location, organizer, startDate, endDate } =
-      req.body;
+    const {
+      title,
+      description,
+      location,
+      organizer,
+      organizerName,
+      startDate,
+      endDate,
+      removeCoverImage,
+    } =
+      req.body || {};
 
-    const event = await Event.findById(req.params.id);
+    const event = await Event.findById(req.params.id, "+imagePublicId +speakers.photoPublicId");
 
     if (!event) {
       return res.status(404).json({
@@ -270,31 +533,15 @@ export const updateEvent = async (req, res) => {
       });
     }
 
-    if (title !== undefined) {
-      if (!String(title).trim()) {
-        return res.status(400).json({
-          message: "Title cannot be empty",
-        });
-      }
-      event.title = title;
-    }
-
-    if (description !== undefined) {
-      if (!String(description).trim()) {
-        return res.status(400).json({
-          message: "Description cannot be empty",
-        });
-      }
-      event.description = description;
-    }
-
-    if (location !== undefined) {
-      if (!String(location).trim()) {
-        return res.status(400).json({
-          message: "Location cannot be empty",
-        });
-      }
-      event.location = location;
+    for (const [field, value, min, max, label] of [
+      ["title", title, 3, 120, "Title"],
+      ["description", description, 10, 1000, "Description"],
+      ["location", location, 3, 500, "Location"],
+    ]) {
+      if (value === undefined) continue;
+      const result = textField(value, label, min, max);
+      if (result.error) return res.status(400).json({ message: result.error, field });
+      event[field] = result.value;
     }
 
     if (organizer !== undefined) {
@@ -307,21 +554,29 @@ export const updateEvent = async (req, res) => {
       event.organizer = organizer;
     }
 
+    if (organizerName !== undefined) {
+      const result = textField(organizerName, "Organization name", 3, 120);
+      if (result.error) return res.status(400).json({ message: result.error, field: "organizerName" });
+      event.organizerName = result.value;
+    }
+
     if (startDate !== undefined) {
-      const start = new Date(startDate);
-      if (Number.isNaN(start.getTime())) {
+      const start = parseEventDate(startDate);
+      if (!start) {
         return res.status(400).json({
           message: "Start date is not a valid date",
+          field: "startDate",
         });
       }
       event.startDate = start;
     }
 
     if (endDate !== undefined) {
-      const end = new Date(endDate);
-      if (Number.isNaN(end.getTime())) {
+      const end = parseEventDate(endDate);
+      if (!end) {
         return res.status(400).json({
           message: "End date is not a valid date",
+          field: "endDate",
         });
       }
       event.endDate = end;
@@ -330,10 +585,129 @@ export const updateEvent = async (req, res) => {
     if (event.endDate <= event.startDate) {
       return res.status(400).json({
         message: "End date must be after the start date",
+        field: "endDate",
       });
     }
 
-    await event.save();
+    const structured = readStructuredFields(req.body || {}, {
+      existing: event,
+      rangeStart: event.startDate,
+      rangeEnd: event.endDate,
+    });
+    if (structured.error) return res.status(400).json({ message: structured.error, field: structured.field });
+
+    const removeSpeakerImageKeys = parseJsonField(
+      req.body?.removeSpeakerImageKeys,
+      "Speaker image keys",
+      [],
+    );
+    if (removeSpeakerImageKeys.error || !Array.isArray(removeSpeakerImageKeys)) {
+      return res.status(400).json({
+        message: removeSpeakerImageKeys.error || "Speaker image keys must be an array",
+        field: "speakers",
+      });
+    }
+    const removeSpeakerKeys = new Set(removeSpeakerImageKeys);
+    for (const speaker of structured.value.speakers) {
+      if (removeSpeakerKeys.has(speaker.clientKey)) {
+        delete speaker.photoUrl;
+        delete speaker.photoPublicId;
+      }
+    }
+    if (![undefined, true, false, "true", "false"].includes(removeCoverImage)) {
+      return res.status(400).json({ message: "Invalid cover image option", field: "coverImage" });
+    }
+    const removeCover = removeCoverImage === true || removeCoverImage === "true";
+    if (removeCover && req.file) {
+      return res.status(400).json({ message: "Choose either a replacement or removal", field: "coverImage" });
+    }
+
+    let newImage;
+    const newSpeakerImages = [];
+    const oldSpeakerImages = new Map(
+      (event.speakers || [])
+        .filter((speaker) => speaker.photoPublicId)
+        .map((speaker) => [speaker.clientKey, speaker.photoPublicId]),
+    );
+    if (req.file) {
+      const validImage = await validateImageFile(req.file, "coverImage");
+      if (validImage.error) return res.status(400).json(validImage);
+      try {
+        newImage = await uploadEventImage(req.file.buffer);
+      } catch {
+        return res.status(502).json({ message: "Image upload failed. Please try again.", field: "coverImage" });
+      }
+    }
+
+    const speakerImageKeys = parseJsonField(req.body?.speakerImageKeys, "Speaker image keys", []);
+    if (speakerImageKeys.error || !Array.isArray(speakerImageKeys)) {
+      if (newImage) await Promise.allSettled([removeEventImage(newImage.imagePublicId)]);
+      return res.status(400).json({ message: speakerImageKeys.error || "Speaker image keys must be an array", field: "speakers" });
+    }
+    if (speakerImageKeys.length !== (req.speakerFiles || []).length) {
+      if (newImage) await Promise.allSettled([removeEventImage(newImage.imagePublicId)]);
+      return res.status(400).json({ message: "Each speaker image must identify its speaker", field: "speakers" });
+    }
+    for (let index = 0; index < (req.speakerFiles || []).length; index += 1) {
+      const key = speakerImageKeys[index];
+      const speaker = structured.value.speakers.find((item) => item.clientKey === key);
+      if (!speaker) {
+        const uploads = [newImage, ...newSpeakerImages].filter(Boolean);
+        await Promise.allSettled(uploads.map((uploaded) => removeEventImage(uploaded.imagePublicId)));
+        return res.status(400).json({ message: "Speaker image key does not match a speaker", field: "speakers" });
+      }
+      const validImage = await validateImageFile(req.speakerFiles[index], "Speaker image");
+      if (validImage.error) {
+        const uploads = [newImage, ...newSpeakerImages].filter(Boolean);
+        await Promise.allSettled(uploads.map((uploaded) => removeEventImage(uploaded.imagePublicId)));
+        return res.status(400).json(validImage);
+      }
+      try {
+        const uploaded = await uploadEventImage(req.speakerFiles[index].buffer);
+        speaker.photoUrl = uploaded.imageUrl;
+        speaker.photoPublicId = uploaded.imagePublicId;
+        newSpeakerImages.push(uploaded);
+      } catch {
+        const uploads = [newImage, ...newSpeakerImages].filter(Boolean);
+        await Promise.allSettled(uploads.map((uploaded) => removeEventImage(uploaded.imagePublicId)));
+        return res.status(502).json({ message: "Speaker image upload failed. Please try again.", field: "speakers" });
+      }
+    }
+
+    const oldImagePublicId = event.imagePublicId;
+    if (newImage) {
+      event.imageUrl = newImage.imageUrl;
+      event.imagePublicId = newImage.imagePublicId;
+    } else if (removeCover) {
+      event.imageUrl = undefined;
+      event.imagePublicId = undefined;
+    }
+    event.eventType = structured.value.eventType;
+    event.tags = structured.value.tags;
+    event.agenda = structured.value.agenda;
+    event.speakers = structured.value.speakers;
+    event.requirements = structured.value.requirements;
+    event.reminders = structured.value.reminders;
+    event.registrationMode = structured.value.registrationMode;
+    event.capacity = structured.value.capacity;
+
+    try {
+      await event.save();
+    } catch (error) {
+      const uploads = [newImage, ...newSpeakerImages].filter(Boolean);
+      await Promise.allSettled(uploads.map((uploaded) => removeEventImage(uploaded.imagePublicId)));
+      throw error;
+    }
+    if ((newImage || removeCover) && oldImagePublicId) {
+      try { await removeEventImage(oldImagePublicId); } catch { console.error("Old event image cleanup failed"); }
+    }
+    const currentSpeakerKeys = new Set((event.speakers || []).map((speaker) => speaker.clientKey));
+    for (const [key, publicId] of oldSpeakerImages) {
+      const current = event.speakers.find((speaker) => speaker.clientKey === key);
+      if (!currentSpeakerKeys.has(key) || current?.photoPublicId !== publicId) {
+        try { await removeEventImage(publicId); } catch { console.error("Old speaker image cleanup failed"); }
+      }
+    }
     await event.populate("organizer", "firstName middleName lastName email");
 
     return res.status(200).json({
@@ -398,5 +772,35 @@ export const archiveEvent = async (req, res) => {
     return res.status(500).json({
       message: "Failed to archive event",
     });
+  }
+};
+
+export const unarchiveEvent = async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    if (!event.isArchived) {
+      return res.status(400).json({ message: "Event is not archived" });
+    }
+
+    event.isArchived = false;
+    await event.save();
+    await event.populate("organizer", "firstName middleName lastName email");
+
+    return res.status(200).json({
+      message: "Event unarchived successfully",
+      event: withStatus(event),
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({ message: "Event id is not valid" });
+    }
+
+    console.error(error);
+    return res.status(500).json({ message: "Failed to unarchive event" });
   }
 };

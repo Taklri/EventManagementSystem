@@ -78,7 +78,7 @@ export default function OtpPage({ kind }) {
     try {
       const result = await (isLogin ? authApi.verifyLoginOtp : authApi.verifyRegistrationOtp)({ challengeId, otp });
       signIn(result.accesstoken, result.user);
-      navigate('/home', { replace: true });
+      navigate(result.user?.role === 'admin' ? '/admin' : '/home', { replace: true });
     } catch (requestError) {
       setError(requestError.message);
       if (requestError.status === 410) setNotice('This code has expired. Please start again.');

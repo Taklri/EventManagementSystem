@@ -22,8 +22,8 @@ Preserve this separation. Do not put database queries in route definitions or du
 ## Current authorization rules
 
 - `student` and `admin` are the supported roles.
-- Event creation, update, and archive operations are admin-only.
-- Event reads are currently available through public routes unless a route explicitly adds authentication.
+- Event creation, update, archive, and unarchive operations are admin-only.
+- Event reads require an authenticated student or admin token. Registration and attendance actions are student-only; registration summaries and QR attendance controls are admin-only.
 - Authorization must remain enforced on the server, not only in the frontend.
 
 ## Security and configuration

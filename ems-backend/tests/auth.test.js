@@ -88,6 +88,7 @@ async function invoke(handler, body = {}, cookies = {}) {
 function assertSignedIn(res, status) {
   assert.equal(res.statusCode, status);
   assert.ok(typeof res.body.accesstoken === 'string');
+  assert.deepEqual(res.body.user, { firstName: registration.firstName, lastName: registration.lastName, role: 'student' });
   const claims = jwt.verify(res.body.accesstoken, process.env.JWT_SECRET_KEY);
   assert.equal(claims.sub, userId.toString());
   assert.equal(claims.role, 'student');
@@ -314,6 +315,15 @@ test('refresh rejects missing/invalid cookies, restores valid sessions, and logo
   process.env.NODE_ENV = 'production';
   assert.equal((await invoke(refreshAccessToken, {}, { refreshToken })).cookieValue.options.secure, true);
   process.env.NODE_ENV = 'test';
+});
+
+test('refresh returns the admin role for portal routing', async () => {
+  stub(User, 'findById', async () => ({ ...user(), role: 'admin' }));
+  const refreshToken = jwt.sign({ sub: userId.toString() }, process.env.JWT_REFRESH_SECRET_KEY, { expiresIn: '7d' });
+  const res = await invoke(refreshAccessToken, {}, { refreshToken });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.user.role, 'admin');
+  assert.equal(jwt.verify(res.body.accesstoken, process.env.JWT_SECRET_KEY).role, 'admin');
 });
 
 test('HTTP routes retain OTP rate limits and return distinct unauthenticated/forbidden results', async () => {

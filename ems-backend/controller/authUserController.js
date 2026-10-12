@@ -46,7 +46,8 @@ const issueTokens = (user, res) => {
 
 const displayUser = (user) => ({
     firstName: user.firstName,
-    lastName: user.lastName
+    lastName: user.lastName,
+    role: user.role
 });
 
 

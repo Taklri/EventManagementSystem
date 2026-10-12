@@ -1,0 +1,9 @@
+export function EventError({ message, onRetry }) {
+  return <div role="alert" className="rounded-2xl border border-red-100 bg-white px-6 py-12 text-center"><h2 className="font-semibold">We couldn’t load this content</h2><p className="mt-2 text-sm text-slate-500">{message}</p><button onClick={onRetry} className="mx-auto mt-5 rounded-lg bg-nu-navy px-4 py-2.5 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy focus-visible:ring-offset-2">Try again</button></div>;
+}
+export function EventSkeletons() {
+  return <div role="status"><span className="sr-only">Loading events…</span><div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 9 }, (_, index) => <div key={index} aria-hidden="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white motion-safe:animate-pulse"><div className="h-36 bg-slate-200/60" /><div className="space-y-4 p-5"><div className="h-5 w-24 rounded bg-slate-100" /><div className="h-6 w-4/5 rounded bg-slate-100" /><div className="h-16 rounded bg-slate-100" /><div className="h-10 rounded bg-slate-100" /></div></div>)}</div></div>;
+}
+export function EventEmpty({ filtered, onClear }) {
+  return <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><h3 className="text-lg font-semibold">{filtered ? 'No matching events' : 'More campus moments are on the way'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{filtered ? 'Try a different search or view all active events.' : 'There are no upcoming or ongoing events right now. Check back for new announcements.'}</p>{filtered && <button onClick={onClear} className="mt-5 rounded-lg px-4 py-2 text-sm font-semibold text-nu-navy underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-nu-navy">Clear search and filters</button>}</div>;
+}

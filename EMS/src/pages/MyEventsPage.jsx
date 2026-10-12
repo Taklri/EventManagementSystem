@@ -1,0 +1,4 @@
+import { Link } from 'react-router-dom';
+export default function MyEventsPage() {
+  return <><h1 className="text-3xl font-bold">My Events</h1><p className="mt-2 text-sm text-slate-500">Your campus experiences, together in one place.</p><section className="mt-8 rounded-2xl border border-slate-200 bg-white px-6 py-20 text-center"><p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Coming soon</p><h2 className="mt-2 text-xl font-semibold">A space for your events</h2><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">Event registration will be available in a future update. For now, explore what’s happening around campus.</p><Link to="/home" className="mt-6 inline-flex rounded-lg bg-nu-navy px-5 py-3 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy focus-visible:ring-offset-2">Explore events</Link></section></>;
+}

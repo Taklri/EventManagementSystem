@@ -7,4 +7,10 @@
   --color-nu-gold: #f5b800;
   --color-nu-gold-dark: #d9a000;
   --font-sans: 'Poppins', system-ui, sans-serif;
+  --animate-page-enter: page-enter 220ms ease-out both;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }

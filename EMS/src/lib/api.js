@@ -45,3 +45,8 @@ export const authApi = {
   refresh: () => apiRequest('/users/refresh', { body: {} }),
   logout: () => apiRequest('/users/logout', { body: {} }),
 };
+
+export const eventsApi = {
+  list: ({ page = 1, limit = 9, search = '', status = 'active' } = {}) => apiRequest(`/events?${new URLSearchParams({ page: String(page), limit: String(limit), search, status })}`),
+  get: (id) => apiRequest(`/events/${encodeURIComponent(id)}`),
+};

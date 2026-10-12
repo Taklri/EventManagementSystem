@@ -77,7 +77,7 @@ export default function OtpPage({ kind }) {
     setNotice('');
     try {
       const result = await (isLogin ? authApi.verifyLoginOtp : authApi.verifyRegistrationOtp)({ challengeId, otp });
-      signIn(result.accesstoken);
+      signIn(result.accesstoken, result.user);
       navigate('/home', { replace: true });
     } catch (requestError) {
       setError(requestError.message);

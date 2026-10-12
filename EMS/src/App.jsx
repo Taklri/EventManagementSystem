@@ -5,6 +5,9 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import OtpPage from './pages/OtpPage';
 import RegisterPage from './pages/RegisterPage';
+import StudentShell from './components/StudentShell';
+import EventDetailsPage from './pages/EventDetailsPage';
+import MyEventsPage from './pages/MyEventsPage';
 
 function RouteContent() {
   const { accessToken, isRestoring } = useAuth();
@@ -16,7 +19,11 @@ function RouteContent() {
     <Route path="/register" element={accessToken ? <Navigate to="/home" replace /> : <RegisterPage />} />
     <Route path="/login/otp" element={accessToken ? <Navigate to="/home" replace /> : <OtpPage kind="login" />} />
     <Route path="/register/otp" element={accessToken ? <Navigate to="/home" replace /> : <OtpPage kind="registration" />} />
-    <Route path="/home" element={accessToken ? <HomePage /> : <Navigate to="/" replace />} />
+    <Route element={accessToken ? <StudentShell /> : <Navigate to="/" replace />}>
+      <Route path="/home" element={<HomePage />} />
+      <Route path="/events/:id" element={<EventDetailsPage />} />
+      <Route path="/my-events" element={<MyEventsPage />} />
+    </Route>
     <Route path="*" element={<Navigate to={accessToken ? '/home' : '/'} replace />} />
   </Routes>;
 }

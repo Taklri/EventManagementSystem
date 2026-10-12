@@ -1,0 +1,1221 @@
+import { useEffect, useRef, useState } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { ArrowLeft, ImagePlus, Trash2 } from 'lucide-react';
+import { useFieldArray, useForm, useWatch } from 'react-hook-form';
+import { Link, useNavigate } from 'react-router-dom';
+import { z } from 'zod';
+import { Button } from '../components/ui/button';
+import { EventDatePicker, EventTimePicker } from '../components/ui/event-schedule-picker';
+import { Form, FormMessage } from '../components/ui/form';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { useAuth } from '../context/AuthContext';
+import { adminApi } from '../lib/api';
+import { getCampusToday } from '../lib/campusDate';
+import { organizerName, toCampusInputParts } from '../lib/eventFormatting';
+import { toast } from 'sonner';
+
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const EVENT_TYPES = [
+  'Seminar',
+  'Workshop',
+  'Webinar',
+  'Conference',
+  'Performance',
+  'Sports',
+  'Orientation',
+  'Other',
+];
+
+const requiredText = (label, min, max) =>
+  z
+    .string()
+    .trim()
+    .min(min, `${label} must be at least ${min} characters.`)
+    .max(max, `${label} must be ${max} characters or fewer.`);
+
+const validDay = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const [, year, month, day] = match.map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() + 1 === month &&
+    parsed.getUTCDate() === day
+  );
+};
+
+const validTime = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+const campusParts = (value) => {
+  const parts = toCampusInputParts(value);
+  return { day: parts.day || '', time: parts.time || '' };
+};
+
+const structuredSchema = {
+  eventType: z.enum(EVENT_TYPES, { message: 'Choose an event type.' }),
+  tags: z.array(z.object({ value: z.string().trim().min(1).max(40) })).max(8),
+  speakers: z
+    .array(
+      z.object({
+        clientKey: z.string().min(1),
+        name: requiredText('Speaker name', 2, 120),
+        role: requiredText('Speaker role', 2, 120),
+      }),
+    )
+    .max(30),
+  agenda: z
+    .array(
+      z.object({
+        title: requiredText('Agenda title', 2, 160),
+        description: z.string().trim().max(500),
+        startDay: z.string().refine(validDay, 'Choose a valid agenda date.'),
+        startTime: z.string().refine(validTime, 'Choose a valid agenda time.'),
+        endDay: z.string().refine(validDay, 'Choose a valid agenda date.'),
+        endTime: z.string().refine(validTime, 'Choose a valid agenda time.'),
+        speakerKeys: z.array(z.string()),
+      }),
+    )
+    .max(40),
+  requirements: z.array(z.object({ value: z.string().trim().min(1).max(240) })).max(20),
+  reminders: z.array(z.object({ value: z.string().trim().min(1).max(240) })).max(20),
+  registrationMode: z.enum(['none', 'required']),
+  capacity: z.string().optional(),
+};
+
+const buildSchema = (allowPastDates = false) =>
+  z
+    .object({
+      title: requiredText('Title', 3, 120),
+      description: requiredText('Description', 10, 1000),
+      location: requiredText('Location', 3, 500),
+      organizerName: requiredText('Organization name', 3, 120),
+      startDay: z.string().refine(validDay, 'Choose a valid start date.'),
+      startTime: z.string().refine(validTime, 'Choose a valid start time.'),
+      endDay: z.string().refine(validDay, 'Choose a valid end date.'),
+      endTime: z.string().refine(validTime, 'Choose a valid end time.'),
+      ...structuredSchema,
+    })
+    .superRefine((values, context) => {
+      const today = getCampusToday();
+      if (!allowPastDates && validDay(values.startDay) && values.startDay < today) {
+        context.addIssue({
+          code: 'custom',
+          path: ['startDay'],
+          message: 'Start date cannot be before today.',
+        });
+      }
+      if (!allowPastDates && validDay(values.endDay) && values.endDay < today) {
+        context.addIssue({
+          code: 'custom',
+          path: ['endDay'],
+          message: 'End date cannot be before today.',
+        });
+      }
+      if (
+        validDay(values.startDay) &&
+        validDay(values.endDay) &&
+        validTime(values.startTime) &&
+        validTime(values.endTime) &&
+        `${values.endDay}T${values.endTime}` <= `${values.startDay}T${values.startTime}`
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['endDay'],
+          message: 'The event must end after it starts.',
+        });
+      }
+
+      if (
+        values.registrationMode === 'required' &&
+        values.capacity &&
+        !/^\d+$/.test(values.capacity)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['capacity'],
+          message: 'Capacity must be a whole number.',
+        });
+      }
+      if (
+        values.registrationMode === 'required' &&
+        values.capacity &&
+        Number(values.capacity) < 1
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['capacity'],
+          message: 'Capacity must be at least 1.',
+        });
+      }
+      values.agenda.forEach((item, index) => {
+        if (`${item.endDay}T${item.endTime}` <= `${item.startDay}T${item.startTime}`) {
+          context.addIssue({
+            code: 'custom',
+            path: ['agenda', index, 'endDay'],
+            message: 'End must be after start.',
+          });
+        }
+        if (
+          validDay(values.startDay) &&
+          validDay(values.endDay) &&
+          (`${item.startDay}T${item.startTime}` < `${values.startDay}T${values.startTime}` ||
+            `${item.endDay}T${item.endTime}` > `${values.endDay}T${values.endTime}`)
+        ) {
+          context.addIssue({
+            code: 'custom',
+            path: ['agenda', index, 'startDay'],
+            message: 'Agenda must fit inside the event schedule.',
+          });
+        }
+      });
+    });
+
+const schema = buildSchema();
+const editSchema = buildSchema(true);
+
+const Field = ({ id, label, error, help, reserveErrorSpace = false, children }) => (
+  <div className="min-w-0 space-y-2">
+    <Label htmlFor={id}>
+      {label}{' '}
+      <span className="text-red-700" aria-hidden="true">
+        *
+      </span>
+    </Label>
+    {children}
+    {help && (
+      <p id={`${id}-help`} className="text-xs leading-5 text-slate-500">
+        {help}
+      </p>
+    )}
+    {reserveErrorSpace ? (
+      <div className="min-h-7">
+        <FormMessage id={`${id}-error`}>{error}</FormMessage>
+      </div>
+    ) : (
+      <FormMessage id={`${id}-error`}>{error}</FormMessage>
+    )}
+  </div>
+);
+
+const SectionHeader = ({ id, title, description }) => (
+  <div className="mb-6">
+    <h2 id={id} className="text-base font-semibold text-nu-dark sm:text-lg">
+      {title}
+    </h2>
+    {description && <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>}
+  </div>
+);
+
+const AdminEventCreatePage = ({ event, returnTo }) => {
+  const editing = Boolean(event);
+  const start = event ? toCampusInputParts(event.startDate) : { day: '', time: '' };
+  const end = event ? toCampusInputParts(event.endDate) : { day: '', time: '' };
+  const { accessToken } = useAuth();
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(event?.imageUrl || '');
+  const [removeExistingCover, setRemoveExistingCover] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [speakerFiles, setSpeakerFiles] = useState({});
+  const [speakerPreviews, setSpeakerPreviews] = useState({});
+  const [removeSpeakerKeys, setRemoveSpeakerKeys] = useState([]);
+
+  const defaultSpeakers = (event?.speakers || []).map((speaker) => ({
+    clientKey: speaker.clientKey || crypto.randomUUID(),
+    name: speaker.name || '',
+    role: speaker.role || '',
+    photoUrl: speaker.photoUrl || '',
+  }));
+  const defaultAgenda = (event?.agenda || []).map((item) => {
+    const agendaStart = campusParts(item.startDate);
+    const agendaEnd = campusParts(item.endDate);
+    return {
+      title: item.title || '',
+      description: item.description || '',
+      startDay: agendaStart.day,
+      startTime: agendaStart.time,
+      endDay: agendaEnd.day,
+      endTime: agendaEnd.time,
+      speakerKeys: item.speakerKeys || [],
+    };
+  });
+
+  const form = useForm({
+    resolver: zodResolver(editing ? editSchema : schema),
+    mode: 'onChange',
+    reValidateMode: 'onChange',
+    defaultValues: {
+      title: event?.title || '',
+      description: event?.description || '',
+      location: event?.location || '',
+      organizerName: event ? organizerName(event) : '',
+      startDay: start.day,
+      startTime: start.time,
+      endDay: end.day,
+      endTime: end.time,
+      eventType: event?.eventType || 'Other',
+      tags: (event?.tags || []).map((value) => ({ value })),
+      speakers: defaultSpeakers,
+      agenda: defaultAgenda,
+      requirements: (event?.requirements || []).map((value) => ({ value })),
+      reminders: (event?.reminders || []).map((value) => ({ value })),
+      registrationMode: event?.registrationMode || 'none',
+      capacity: event?.capacity ? String(event.capacity) : '',
+    },
+  });
+
+  const agendaFields = useFieldArray({ control: form.control, name: 'agenda' });
+  const speakerFields = useFieldArray({ control: form.control, name: 'speakers' });
+  const tagFields = useFieldArray({ control: form.control, name: 'tags' });
+  const requirementFields = useFieldArray({ control: form.control, name: 'requirements' });
+  const reminderFields = useFieldArray({ control: form.control, name: 'reminders' });
+
+  const {
+    register,
+    handleSubmit,
+    getValues,
+    setError,
+    setValue,
+    trigger,
+    formState: { errors, isSubmitting },
+  } = form;
+
+  useEffect(
+    () => () => {
+      if (imagePreview.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
+    },
+    [imagePreview],
+  );
+
+  const chooseImage = (file) => {
+    setImageError('');
+    if (!file) return;
+
+    if (!IMAGE_TYPES.includes(file.type)) {
+      setImageError('Choose a JPEG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageError('The image must be 5 MB or smaller.');
+      return;
+    }
+
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setRemoveExistingCover(false);
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview('');
+    if (editing && event.imageUrl) setRemoveExistingCover(true);
+    setImageError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const submit = async (values) => {
+    setFormError('');
+    const body = new FormData();
+    for (const key of ['title', 'description', 'location', 'organizerName']) {
+      body.append(key, values[key].trim());
+    }
+    body.append('startDate', `${values.startDay}T${values.startTime}`);
+    body.append('endDate', `${values.endDay}T${values.endTime}`);
+    body.append('eventType', values.eventType);
+    body.append(
+      'tags',
+      JSON.stringify(values.tags.map((item) => item.value.trim()).filter(Boolean)),
+    );
+    body.append(
+      'requirements',
+      JSON.stringify(values.requirements.map((item) => item.value.trim()).filter(Boolean)),
+    );
+    body.append(
+      'reminders',
+      JSON.stringify(values.reminders.map((item) => item.value.trim()).filter(Boolean)),
+    );
+    body.append('registrationMode', values.registrationMode);
+    if (values.capacity) body.append('capacity', values.capacity);
+    body.append(
+      'speakers',
+      JSON.stringify(
+        values.speakers.map(({ clientKey, name, role }) => ({
+          clientKey,
+          name: name.trim(),
+          role: role.trim(),
+        })),
+      ),
+    );
+    body.append(
+      'agenda',
+      JSON.stringify(
+        values.agenda.map((item) => ({
+          title: item.title.trim(),
+          description: item.description.trim(),
+          startDate: `${item.startDay}T${item.startTime}`,
+          endDate: `${item.endDay}T${item.endTime}`,
+          speakerKeys: item.speakerKeys,
+        })),
+      ),
+    );
+    const speakerImageEntries = Object.entries(speakerFiles);
+    body.append('speakerImageKeys', JSON.stringify(speakerImageEntries.map(([key]) => key)));
+    for (const [, file] of speakerImageEntries) body.append('speakerImages', file);
+    if (removeSpeakerKeys.length)
+      body.append('removeSpeakerImageKeys', JSON.stringify(removeSpeakerKeys));
+    if (imageFile) body.append('coverImage', imageFile);
+    if (editing && removeExistingCover && !imageFile) body.append('removeCoverImage', 'true');
+
+    try {
+      if (editing) {
+        await adminApi.updateEvent(event._id, body, accessToken);
+        toast.success('Event updated successfully.');
+        navigate(`/admin/events/${event._id}`, { replace: true, state: { returnTo } });
+      } else {
+        await adminApi.createEvent(body, accessToken);
+        navigate('/admin', { replace: true, state: { eventCreated: true } });
+      }
+    } catch (error) {
+      const fieldMap = { startDate: 'startDay', endDate: 'endDay' };
+      const field = fieldMap[error.field] || error.field;
+      if (field === 'coverImage') {
+        setImageError(error.message);
+      } else if (field && Object.hasOwn(values, field)) {
+        setError(field, { type: 'server', message: error.message });
+      } else if (error.status === 401) {
+        setFormError('Your session has expired. Please sign in again.');
+      } else if (error.status === 403) {
+        setFormError('Your account does not have permission to manage events.');
+      } else {
+        setFormError(
+          error.message ||
+            `Unable to ${editing ? 'update' : 'create'} the event. Please try again.`,
+        );
+      }
+    }
+  };
+
+  const fieldClass = (name) =>
+    errors[name] ? 'border-red-500 focus:border-red-600 focus:ring-red-100' : '';
+  const describedBy = (name, help = false) =>
+    [help ? `${name}-help` : '', errors[name] ? `${name}-error` : ''].filter(Boolean).join(' ') ||
+    undefined;
+
+  const [startDay, startTime, endDay, endTime] = useWatch({
+    control: form.control,
+    name: ['startDay', 'startTime', 'endDay', 'endTime'],
+  });
+  const registrationMode = useWatch({ control: form.control, name: 'registrationMode' });
+  const tagValues = useWatch({ control: form.control, name: 'tags' });
+  const speakerValues = useWatch({ control: form.control, name: 'speakers' });
+
+  const updateSchedule = async (name, value) => {
+    setValue(name, value, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    if (getValues('endDay') && getValues('endTime')) await trigger('endDay');
+  };
+
+  const chooseSpeakerImage = (key, file) => {
+    if (!file) return;
+    if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_BYTES) {
+      setFormError('Speaker images must be JPEG, PNG, or WebP files up to 5 MB.');
+      return;
+    }
+    setSpeakerFiles((current) => ({ ...current, [key]: file }));
+    setSpeakerPreviews((current) => ({ ...current, [key]: URL.createObjectURL(file) }));
+    setRemoveSpeakerKeys((current) => current.filter((item) => item !== key));
+  };
+
+  const removeSpeakerImage = (key) => {
+    setSpeakerFiles((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setSpeakerPreviews((current) => {
+      const next = { ...current };
+      if (next[key]?.startsWith('blob:')) URL.revokeObjectURL(next[key]);
+      delete next[key];
+      return next;
+    });
+    if (
+      editing &&
+      event?.speakers?.some((speaker) => speaker.clientKey === key && speaker.photoUrl)
+    ) {
+      setRemoveSpeakerKeys((current) => [...new Set([...current, key])]);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl pb-8">
+      <Link
+        to={editing ? `/admin/events/${event._id}` : '/admin'}
+        state={editing ? { returnTo } : undefined}
+        className="mb-6 inline-flex min-h-10 items-center gap-2 rounded-lg text-sm font-medium text-slate-600 hover:text-nu-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy"
+      >
+        <ArrowLeft size={16} aria-hidden="true" />
+        {editing ? 'Back to event details' : 'Back to dashboard'}
+      </Link>
+
+      <header className="mb-8">
+        <p className="text-xs font-medium text-slate-500">
+          Event management / {editing ? 'Edit event' : 'New event'}
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-nu-dark sm:text-3xl">
+          {editing ? 'Edit event' : 'Create an event'}
+        </h1>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+          {editing
+            ? 'Update the information students see about this event.'
+            : 'Share the essentials students need to plan their visit.'}
+        </p>
+      </header>
+
+      <Form {...form}>
+        <form onSubmit={handleSubmit(submit)} noValidate className="space-y-5">
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="details-heading"
+          >
+            <SectionHeader
+              id="details-heading"
+              title="Event details"
+              description="This information will appear in the student portal."
+            />
+            <div className="space-y-5">
+              <Field
+                id="title"
+                label="Event title"
+                error={errors.title?.message}
+                help="3–120 characters"
+              >
+                <Input
+                  id="title"
+                  required
+                  maxLength={120}
+                  placeholder="e.g. Student Leadership Summit"
+                  aria-invalid={Boolean(errors.title)}
+                  aria-describedby={describedBy('title', true)}
+                  className={fieldClass('title')}
+                  disabled={isSubmitting}
+                  {...register('title')}
+                />
+              </Field>
+              <Field
+                id="description"
+                label="Description"
+                error={errors.description?.message}
+                help="10–1,000 characters"
+              >
+                <Textarea
+                  id="description"
+                  required
+                  maxLength={1000}
+                  rows={5}
+                  placeholder="What should students know about this event?"
+                  aria-invalid={Boolean(errors.description)}
+                  aria-describedby={describedBy('description', true)}
+                  className={fieldClass('description')}
+                  disabled={isSubmitting}
+                  {...register('description')}
+                />
+              </Field>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field id="location" label="Location" error={errors.location?.message}>
+                  <Input
+                    id="location"
+                    required
+                    maxLength={500}
+                    placeholder="e.g. NU Main Auditorium"
+                    aria-invalid={Boolean(errors.location)}
+                    aria-describedby={describedBy('location')}
+                    className={fieldClass('location')}
+                    disabled={isSubmitting}
+                    {...register('location')}
+                  />
+                </Field>
+                <Field
+                  id="organizerName"
+                  label="Hosting organization"
+                  error={errors.organizerName?.message}
+                >
+                  <Input
+                    id="organizerName"
+                    required
+                    maxLength={120}
+                    placeholder="e.g. NU Student Council"
+                    aria-invalid={Boolean(errors.organizerName)}
+                    aria-describedby={describedBy('organizerName')}
+                    className={fieldClass('organizerName')}
+                    disabled={isSubmitting}
+                    {...register('organizerName')}
+                  />
+                </Field>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="type-heading"
+          >
+            <SectionHeader
+              id="type-heading"
+              title="Event type and tags"
+              description="Help students understand what kind of campus event this is."
+            />
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field id="eventType" label="Event type" error={errors.eventType?.message}>
+                <select
+                  id="eventType"
+                  className={`min-h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/15 ${fieldClass('eventType')}`}
+                  disabled={isSubmitting}
+                  {...register('eventType')}
+                >
+                  {EVENT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="space-y-2">
+                <Label htmlFor="tag-input">Tags</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="tag-input"
+                    placeholder="e.g. Academic"
+                    disabled={isSubmitting}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return;
+                      event.preventDefault();
+                      const value = event.currentTarget.value.trim();
+                      if (value && tagFields.fields.length < 8) {
+                        tagFields.append({ value });
+                        event.currentTarget.value = '';
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSubmitting || tagFields.fields.length >= 8}
+                    onClick={() => {
+                      const input = document.getElementById('tag-input');
+                      const value = input?.value.trim();
+                      if (value) {
+                        tagFields.append({ value });
+                        input.value = '';
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {tagFields.fields.map((field, index) => (
+                    <span
+                      key={field.id}
+                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-700"
+                    >
+                      {tagValues?.[index]?.value}
+                      <button
+                        type="button"
+                        className="rounded-full px-1 text-slate-500 hover:text-red-700"
+                        aria-label={`Remove tag ${tagValues?.[index]?.value || 'tag'}`}
+                        onClick={() => tagFields.remove(index)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Up to 8 tags. Press Enter or Add after typing.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="agenda-heading"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <SectionHeader
+                id="agenda-heading"
+                title="Program agenda"
+                description="Add sessions, talks, or activities inside the event schedule."
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting || agendaFields.fields.length >= 40}
+                onClick={() =>
+                  agendaFields.append({
+                    title: '',
+                    description: '',
+                    startDay: startDay || '',
+                    startTime: startTime || '',
+                    endDay: endDay || '',
+                    endTime: endTime || '',
+                    speakerKeys: [],
+                  })
+                }
+              >
+                Add program
+              </Button>
+            </div>
+            {agendaFields.fields.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No program items yet. Add one when the event has a detailed schedule.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {agendaFields.fields.map((field, index) => (
+                  <div key={field.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-nu-dark">Program {index + 1}</p>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-red-700 hover:underline"
+                        onClick={() => agendaFields.remove(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field
+                        id={`agenda-${index}-title`}
+                        label="Title"
+                        error={errors.agenda?.[index]?.title?.message}
+                      >
+                        <Input
+                          id={`agenda-${index}-title`}
+                          maxLength={160}
+                          placeholder="Opening remarks"
+                          {...register(`agenda.${index}.title`)}
+                        />
+                      </Field>
+                      <div className="space-y-2">
+                        <Label htmlFor={`agenda-${index}-description`}>Description</Label>
+                        <Input
+                          id={`agenda-${index}-description`}
+                          maxLength={500}
+                          placeholder="Optional details"
+                          {...register(`agenda.${index}.description`)}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label htmlFor={`agenda-${index}-startDay`}>Starts</Label>
+                          <input
+                            type="date"
+                            id={`agenda-${index}-startDay`}
+                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                            {...register(`agenda.${index}.startDay`)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`agenda-${index}-startTime`}>Time</Label>
+                          <input
+                            type="time"
+                            id={`agenda-${index}-startTime`}
+                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                            {...register(`agenda.${index}.startTime`)}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label htmlFor={`agenda-${index}-endDay`}>Ends</Label>
+                          <input
+                            type="date"
+                            id={`agenda-${index}-endDay`}
+                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                            {...register(`agenda.${index}.endDay`)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`agenda-${index}-endTime`}>Time</Label>
+                          <input
+                            type="time"
+                            id={`agenda-${index}-endTime`}
+                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                            {...register(`agenda.${index}.endTime`)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {speakerFields.fields.length > 0 && (
+                      <fieldset className="mt-4">
+                        <legend className="text-xs font-semibold text-slate-600">Speakers</legend>
+                        <div className="mt-2 flex flex-wrap gap-3">
+                          {speakerFields.fields.map((speaker, speakerIndex) => (
+                            <label
+                              key={speaker.id}
+                              className="inline-flex items-center gap-2 text-xs text-slate-600"
+                            >
+                              <input
+                                type="checkbox"
+                                value={speakerValues?.[speakerIndex]?.clientKey || ''}
+                                {...register(`agenda.${index}.speakerKeys`)}
+                              />
+                              {speakerValues?.[speakerIndex]?.name || `Speaker ${speakerIndex + 1}`}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    )}
+                    {errors.agenda?.[index]?.startDay?.message && (
+                      <p className="mt-3 text-xs text-red-700">
+                        {errors.agenda[index].startDay.message}
+                      </p>
+                    )}
+                    {errors.agenda?.[index]?.endDay?.message && (
+                      <p className="mt-1 text-xs text-red-700">
+                        {errors.agenda[index].endDay.message}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="speakers-heading"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <SectionHeader
+                id="speakers-heading"
+                title="Speakers"
+                description="Add the people students will hear from at this event."
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting || speakerFields.fields.length >= 30}
+                onClick={() =>
+                  speakerFields.append({
+                    clientKey: crypto.randomUUID(),
+                    name: '',
+                    role: '',
+                    photoUrl: '',
+                  })
+                }
+              >
+                Add speaker
+              </Button>
+            </div>
+            {speakerFields.fields.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No speakers added.
+              </p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {speakerFields.fields.map((field, index) => {
+                  const key = speakerValues?.[index]?.clientKey || field.clientKey;
+                  const name = speakerValues?.[index]?.name || '';
+                  const existingPhoto = event?.speakers?.find(
+                    (speaker) => speaker.clientKey === key,
+                  )?.photoUrl;
+                  const preview = speakerPreviews[key] || existingPhoto;
+                  return (
+                    <div key={field.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          {preview ? (
+                            <img
+                              src={preview}
+                              alt=""
+                              className="h-12 w-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+                              {(name || '?').slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-sm font-semibold text-nu-dark">
+                              Speaker {index + 1}
+                            </p>
+                            <label className="text-xs font-medium text-nu-navy underline">
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="sr-only"
+                                onChange={(change) =>
+                                  chooseSpeakerImage(key, change.target.files?.[0])
+                                }
+                              />
+                              {preview ? 'Replace photo' : 'Add photo'}
+                            </label>
+                            {preview && (
+                              <button
+                                type="button"
+                                className="ml-3 text-xs font-medium text-red-700 underline"
+                                onClick={() => removeSpeakerImage(key)}
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-red-700 hover:underline"
+                          onClick={() => speakerFields.remove(index)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        <Input
+                          aria-label={`Speaker ${index + 1} name`}
+                          placeholder="Full name"
+                          {...register(`speakers.${index}.name`)}
+                        />
+                        <Input
+                          aria-label={`Speaker ${index + 1} role`}
+                          placeholder="Role or designation"
+                          {...register(`speakers.${index}.role`)}
+                        />
+                        {errors.speakers?.[index] && (
+                          <p className="text-xs text-red-700">
+                            {errors.speakers[index].name?.message ||
+                              errors.speakers[index].role?.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="registration-heading"
+          >
+            <SectionHeader
+              id="registration-heading"
+              title="Registration"
+              description="Choose whether students need to reserve a place."
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                id="registrationMode"
+                label="Registration mode"
+                error={errors.registrationMode?.message}
+              >
+                <select
+                  id="registrationMode"
+                  className="min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+                  disabled={isSubmitting}
+                  {...register('registrationMode')}
+                >
+                  <option value="none">No registration</option>
+                  <option value="required">Registration required</option>
+                </select>
+              </Field>
+              {registrationMode === 'required' && (
+                <Field
+                  id="capacity"
+                  label="Capacity (optional)"
+                  error={errors.capacity?.message}
+                  help="Leave blank for unlimited registration."
+                >
+                  <Input
+                    id="capacity"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    inputMode="numeric"
+                    placeholder="e.g. 100"
+                    aria-invalid={Boolean(errors.capacity)}
+                    {...register('capacity')}
+                  />
+                </Field>
+              )}
+            </div>
+            {registrationMode === 'required' && (
+              <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                Registration closes when the event starts. Students may cancel before then; when
+                capacity is full, new registrations enter a waitlist.
+              </p>
+            )}
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="guidance-heading"
+          >
+            <SectionHeader
+              id="guidance-heading"
+              title="Requirements and reminders"
+              description="Give students practical information before they attend."
+            />
+            <div className="grid gap-6 sm:grid-cols-2">
+              {[
+                [
+                  'requirements',
+                  'Requirements',
+                  requirementFields,
+                  'What students need to bring or complete',
+                ],
+                ['reminders', 'Reminders', reminderFields, 'Arrival, dress, or preparation notes'],
+              ].map(([name, label, fields, placeholder]) => (
+                <div key={name}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-nu-dark">{label}</h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="min-h-9 px-3 text-xs"
+                      disabled={isSubmitting || fields.fields.length >= 20}
+                      onClick={() => fields.append({ value: '' })}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                  {fields.fields.length === 0 ? (
+                    <p className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                      None added.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {fields.fields.map((field, index) => (
+                        <div key={field.id} className="flex gap-2">
+                          <Input
+                            maxLength={240}
+                            placeholder={placeholder}
+                            {...register(`${name}.${index}.value`)}
+                          />
+                          <button
+                            type="button"
+                            className="rounded-md px-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                            aria-label={`Remove ${label.toLowerCase()} item ${index + 1}`}
+                            onClick={() => fields.remove(index)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="schedule-heading"
+          >
+            <SectionHeader
+              id="schedule-heading"
+              title="Schedule"
+              description="Choose dates and times in Philippine Standard Time (UTC+8)."
+            />
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-nu-dark">Starts</p>
+                <div className="grid gap-4">
+                  <Field
+                    id="startDay"
+                    label="Date"
+                    error={errors.startDay?.message}
+                    reserveErrorSpace
+                  >
+                    <EventDatePicker
+                      id="startDay"
+                      label="Start date"
+                      value={startDay}
+                      allowPast={editing}
+                      onChange={(value) => updateSchedule('startDay', value)}
+                      invalid={Boolean(errors.startDay)}
+                      describedBy={describedBy('startDay')}
+                      disabled={isSubmitting}
+                    />
+                  </Field>
+                  <Field id="startTime" label="Time" error={errors.startTime?.message}>
+                    <EventTimePicker
+                      id="startTime"
+                      label="Start time"
+                      value={startTime}
+                      onChange={(value) => updateSchedule('startTime', value)}
+                      invalid={Boolean(errors.startTime)}
+                      describedBy={describedBy('startTime')}
+                      disabled={isSubmitting}
+                    />
+                  </Field>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-nu-dark">Ends</p>
+                <div className="grid gap-4">
+                  <Field id="endDay" label="Date" error={errors.endDay?.message} reserveErrorSpace>
+                    <EventDatePicker
+                      id="endDay"
+                      label="End date"
+                      value={endDay}
+                      minDate={startDay}
+                      allowPast={editing}
+                      onChange={(value) => updateSchedule('endDay', value)}
+                      invalid={Boolean(errors.endDay)}
+                      describedBy={describedBy('endDay')}
+                      disabled={isSubmitting}
+                    />
+                  </Field>
+                  <Field id="endTime" label="Time" error={errors.endTime?.message}>
+                    <EventTimePicker
+                      id="endTime"
+                      label="End time"
+                      value={endTime}
+                      onChange={(value) => updateSchedule('endTime', value)}
+                      invalid={Boolean(errors.endTime)}
+                      describedBy={describedBy('endTime')}
+                      disabled={isSubmitting}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="cover-heading"
+          >
+            <SectionHeader
+              id="cover-heading"
+              title="Cover image"
+              description="Optional · JPEG, PNG, or WebP · up to 5 MB"
+            />
+            <div
+              className="overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50/50"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (!isSubmitting) chooseImage(event.dataTransfer.files?.[0]);
+              }}
+            >
+              {imagePreview ? (
+                <div className="relative">
+                  <img
+                    src={imagePreview}
+                    alt="Selected event cover preview"
+                    className="aspect-[16/7] w-full object-cover"
+                  />
+                  <div className="flex flex-col gap-3 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                    <p
+                      title={imageFile?.name || 'Current cover image'}
+                      className="min-w-0 flex-1 truncate text-sm font-medium text-nu-dark"
+                    >
+                      {imageFile?.name || 'Current cover image'}
+                    </p>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isSubmitting}
+                        onClick={() => fileInputRef.current?.click()}
+                        aria-label="Replace cover image"
+                        title="Replace cover image"
+                        className="h-10 min-h-10 w-10 shrink-0 p-0"
+                      >
+                        <ImagePlus size={17} aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isSubmitting}
+                        onClick={removeImage}
+                        aria-label="Remove cover image"
+                        title="Remove cover image"
+                        className="h-10 min-h-10 w-10 shrink-0 p-0"
+                      >
+                        <Trash2 size={17} aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex min-h-52 flex-col items-center justify-center px-5 py-9 text-center">
+                  <p className="text-sm font-semibold text-nu-dark">Add a cover image</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Drag an image here, or choose one from your device.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSubmitting}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-4 min-h-10 px-4"
+                  >
+                    Choose image
+                  </Button>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                tabIndex={-1}
+                aria-label="Cover image file"
+                onChange={(event) => {
+                  chooseImage(event.target.files?.[0]);
+                  event.target.value = '';
+                }}
+                disabled={isSubmitting}
+              />
+            </div>
+            <FormMessage id="coverImage-error">{imageError}</FormMessage>
+          </section>
+
+          {formError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            >
+              {formError}
+            </p>
+          )}
+          <div className="flex flex-col-reverse items-stretch justify-end gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:items-center">
+            <Button asChild variant="ghost" className="w-full sm:w-auto">
+              <Link
+                to={editing ? `/admin/events/${event._id}` : '/admin'}
+                state={editing ? { returnTo } : undefined}
+              >
+                Cancel
+              </Link>
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+              {isSubmitting
+                ? editing
+                  ? 'Saving changes…'
+                  : 'Creating event…'
+                : editing
+                  ? 'Save changes'
+                  : 'Create event'}
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </div>
+  );
+};
+
+export default AdminEventCreatePage;

@@ -44,6 +44,12 @@ const issueTokens = (user, res) => {
     return accessToken;
 };
 
+const displayUser = (user) => ({
+    firstName: user.firstName,
+    lastName: user.lastName,
+    role: user.role
+});
+
 
 export const loginUser = async (req, res) => {
     try{
@@ -210,7 +216,8 @@ export const refreshAccessToken = async (req, res) => {
 
         return res.status(200).json({
             message: 'Access token refreshed',
-            accesstoken: accessToken
+            accesstoken: accessToken,
+            user: displayUser(user)
         });
     } catch (error) {
         console.error('Refresh token request failed');
@@ -307,7 +314,8 @@ export const verifyLoginOtp = async (req,res) => {
 
         return res.status(200).json({
             message: 'Login successful',
-            accesstoken: accessToken
+            accesstoken: accessToken,
+            user: displayUser(user)
         });
 
     }
@@ -412,7 +420,8 @@ export const verifyRegistrationOtp = async (req, res) => {
 
         return res.status(201).json({
             message: 'Registration successful',
-            accesstoken: accessToken
+            accesstoken: accessToken,
+            user: displayUser(user)
         });
     } catch (error) {
         if (error?.code === 11000) {

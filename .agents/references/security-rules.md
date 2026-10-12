@@ -26,7 +26,9 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 
 - Missing or invalid bearer authentication returns `401`.
 - Authenticated users without an allowed role return `403`.
-- Event creation, update, and archive operations require the `admin` role.
+- Event creation, update, archive, and unarchive operations require the `admin` role.
+- Event catalog and detail reads require an authenticated `student` or `admin` role. Student registration, cancellation, and attendance endpoints require the `student` role. Registration and attendance summaries, QR session creation, and attendance record lookup require the `admin` role.
+- The admin dashboard and admin event-list endpoints require a bearer token and the `admin` role. Portal route guards send students and admins to their own landing pages; backend middleware remains the authority for protected API access.
 - Profile updates allow an admin to update any profile or a user to update their own profile.
 
 ## Rate limits
@@ -59,6 +61,7 @@ The backend reads private configuration from environment variables, including:
 - `BREVO_API_KEY`
 - `BREVO_SENDER_EMAIL`
 - `BREVO_SENDER_NAME`
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, and optional `CLOUDINARY_FOLDER` for server-side event cover uploads.
 
 Never copy values from `.env` into documentation, AI skills, logs, responses, commits, or screenshots.
 
@@ -66,6 +69,7 @@ Never copy values from `.env` into documentation, AI skills, logs, responses, co
 
 - Keep password and OTP values hashed at rest.
 - Do not log passwords, OTPs, tokens, API keys, or database credentials.
+- Attendance QR tokens are short-lived signed JWTs scoped to one event. Do not log or persist them outside the QR-session response intended for the admin display.
 - Preserve credentialed CORS behavior for the configured frontend origin.
 - Keep authorization checks on the server even when the frontend hides controls.
 - Verify both successful and denied authentication/authorization paths after security-sensitive changes.

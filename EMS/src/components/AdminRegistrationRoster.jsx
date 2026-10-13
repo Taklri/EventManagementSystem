@@ -8,6 +8,7 @@ import {
   TablePagination,
   TableRow,
 } from '@mui/material';
+import { Search } from 'lucide-react';
 import { Button } from './ui/button';
 import { adminApi } from '../lib/api';
 
@@ -22,7 +23,9 @@ const campusTime = (value) =>
 
 const AdminRegistrationRoster = ({ eventId, accessToken }) => {
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState('all');
+  const [status, setStatus] = useState('registered');
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -33,7 +36,7 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
   useEffect(() => {
     let active = true;
     adminApi
-      .registrations(eventId, { page, status }, accessToken)
+      .registrations(eventId, { page, status, search: query }, accessToken)
       .then((result) => {
         if (!active) return;
         setData(result);
@@ -48,7 +51,14 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
     return () => {
       active = false;
     };
-  }, [eventId, accessToken, page, status, attempt]);
+  }, [eventId, accessToken, page, status, query, attempt]);
+
+  const applySearch = (event) => {
+    event.preventDefault();
+    setPage(1);
+    setLoading(true);
+    setQuery(search.trim());
+  };
 
   const exportCsv = async () => {
     setExporting(true);
@@ -77,38 +87,61 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
       <div className="flex flex-wrap items-start justify-between gap-4 print:hidden">
         <div>
           <h2 id="roster-heading" className="text-lg font-semibold text-nu-dark">
-            Registration responses
+            Registered students
           </h2>
           <p className="mt-1 text-xs text-slate-500">
-            Review answers and export the full list for venue check-in.
+            Review student details and open submitted answers when needed.
           </p>
         </div>
         <Button type="button" variant="outline" disabled={exporting} onClick={exportCsv}>
           {exporting ? 'Exporting…' : 'Export CSV'}
         </Button>
       </div>
-      <h2 className="hidden text-lg font-semibold print:block">Event registration list</h2>
-      <div className="mt-5 flex flex-wrap items-center gap-3 print:hidden">
-        <label htmlFor="roster-status" className="text-xs font-medium text-slate-600">
-          Status
-        </label>
-        <select
-          id="roster-status"
-          value={status}
-          onChange={(event) => {
-            setStatus(event.target.value);
-            setPage(1);
-            setLoading(true);
-          }}
-          className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus-visible:ring-2 focus-visible:ring-nu-navy"
-        >
-          <option value="all">All submissions</option>
-          <option value="registered">Registered</option>
-          <option value="waitlisted">Waitlisted</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+      <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-end print:hidden">
+        <form onSubmit={applySearch} className="min-w-0 flex-1">
+          <label htmlFor="roster-search" className="text-xs font-medium text-slate-600">
+            Search students
+          </label>
+          <div className="relative mt-1">
+            <Search
+              size={16}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              id="roster-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Name, student ID, program, or year level"
+              className="min-h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-nu-dark outline-none transition placeholder:text-slate-400 focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/20"
+            />
+          </div>
+        </form>
+        <div>
+          <label htmlFor="roster-status" className="text-xs font-medium text-slate-600">
+            Status
+          </label>
+          <select
+            id="roster-status"
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value);
+              setPage(1);
+              setLoading(true);
+            }}
+            className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-nu-dark outline-none focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/20 md:w-44"
+          >
+            <option value="registered">Registered</option>
+            <option value="waitlisted">Waitlisted</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="all">All submissions</option>
+          </select>
+        </div>
+        <Button type="button" variant="outline" onClick={applySearch}>
+          Search
+        </Button>
         <Button type="button" variant="ghost" onClick={() => window.print()}>
-          Print current page
+          Print
         </Button>
       </div>
       {error && (
@@ -140,21 +173,20 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
             <Table
               size="small"
               sx={{
-                minWidth: 720,
+                minWidth: 760,
                 '& .MuiTableCell-root': { fontFamily: 'inherit', borderColor: '#e2e8f0' },
               }}
             >
               <TableHead sx={{ backgroundColor: '#f8fafc' }}>
                 <TableRow>
                   {[
-                    'Student',
-                    'School ID',
+                    'Student ID',
+                    'Student name',
+                    'Program',
+                    'Year level',
                     'Status',
                     'Submitted',
-                    'Time in',
-                    'Time out',
-                    'Answers',
-                    'Signature',
+                    'View answers',
                   ].map((heading) => (
                     <TableCell key={heading} sx={{ fontWeight: 600, color: '#1b2f5a' }}>
                       {heading}
@@ -165,12 +197,12 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
               <TableBody>
                 {data.registrations.map((row) => (
                   <TableRow key={row._id} hover>
-                    <TableCell>{row.student?.name || 'Account unavailable'}</TableCell>
                     <TableCell>{row.student?.studentId || '—'}</TableCell>
+                    <TableCell>{row.student?.name || 'Account unavailable'}</TableCell>
+                    <TableCell>{row.student?.program || '—'}</TableCell>
+                    <TableCell>{row.student?.yearLevel || '—'}</TableCell>
                     <TableCell className="capitalize">{row.status}</TableCell>
                     <TableCell>{campusTime(row.submittedAt)}</TableCell>
-                    <TableCell>{campusTime(row.attendance?.timeIn)}</TableCell>
-                    <TableCell>{campusTime(row.attendance?.timeOut)}</TableCell>
                     <TableCell>
                       {(row.answers || []).length ? (
                         <button
@@ -182,7 +214,7 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
                           aria-expanded={expanded === row._id}
                           aria-controls={`roster-answers-${row._id}`}
                         >
-                          {expanded === row._id ? 'Hide' : 'View'}
+                          {expanded === row._id ? 'Hide answers' : 'View answers'}
                         </button>
                       ) : (
                         '—'
@@ -190,12 +222,12 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
                       {expanded === row._id && (
                         <dl
                           id={`roster-answers-${row._id}`}
-                          className="mt-2 min-w-48 space-y-2 text-xs print:hidden"
+                          className="mt-3 min-w-56 space-y-2 text-xs print:hidden"
                         >
                           {row.answers.map((answer) => (
                             <div key={answer.key}>
-                              <dt className="font-semibold">{answer.label}</dt>
-                              <dd>
+                              <dt className="font-semibold text-nu-dark">{answer.label}</dt>
+                              <dd className="mt-0.5 text-slate-600">
                                 {Array.isArray(answer.value)
                                   ? answer.value.join(', ')
                                   : answer.value || 'No answer'}
@@ -204,11 +236,6 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
                           ))}
                         </dl>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-block min-w-24 border-b border-slate-400">
-                        &nbsp;
-                      </span>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -3,16 +3,23 @@ import User from "../models/User.js";
 import PendingRegistration from "../models/PendingRegistration.js";
 import { sendOtpEmail } from "../services/brevoService.js";
 import { generateOtp, hashOtp, challengeDetails } from "../utils/otp.js";
-import { isValidEmail, passwordValidationError } from "../utils/authValidation.js";
+import {
+  isValidEmail,
+  passwordValidationError,
+  programValidationError,
+  yearLevelValidationError,
+} from "../utils/authValidation.js";
 
 export const registerUser = async (req, res) => {
   try {
-    const { studentId, firstName, middleName, lastName, email, password } = req.body || {};
+    const { studentId, firstName, middleName, lastName, yearLevel, program, email, password } = req.body || {};
 
     const requiredFieldsAreValid = [
       studentId,
       firstName,
       lastName,
+      yearLevel,
+      program,
       email,
       password,
     ].every((value) => typeof value === "string" && value.trim());
@@ -28,6 +35,8 @@ export const registerUser = async (req, res) => {
     const normalizedFirstName = firstName.trim();
     const normalizedMiddleName = middleName ? middleName.trim() : "";
     const normalizedLastName = lastName.trim();
+    const normalizedYearLevel = yearLevel.trim();
+    const normalizedProgram = program.trim();
     const namePattern = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u;
 
     if (!/^\d{4}-\d{6}$/.test(normalizedStudentId)) {
@@ -49,6 +58,11 @@ export const registerUser = async (req, res) => {
         message: "Please provide a valid email address",
       });
     }
+
+    const yearLevelError = yearLevelValidationError(normalizedYearLevel);
+    if (yearLevelError) return res.status(400).json({ message: yearLevelError, field: "yearLevel" });
+    const programError = programValidationError(normalizedProgram);
+    if (programError) return res.status(400).json({ message: programError, field: "program" });
 
     const userExist = await User.findOne({
       $or: [
@@ -88,6 +102,8 @@ export const registerUser = async (req, res) => {
         firstName: normalizedFirstName,
         middleName: normalizedMiddleName,
         lastName: normalizedLastName,
+        yearLevel: normalizedYearLevel,
+        program: normalizedProgram,
         email: normalizedEmail,
         passwordHash: hashedPassword,
         codeHash,
@@ -152,7 +168,7 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    const { studentId, firstName, middleName, lastName, email } = req.body;
+    const { firstName, middleName, lastName } = req.body;
 
     const user = await User.findById(id);
 
@@ -176,30 +192,6 @@ export const updateUser = async (req, res) => {
       return res.status(400).json({
         message: "Last name cannot be empty",
       });
-    }
-    if (email !== undefined && !email.trim()) {
-      return res.status(400).json({
-        message: "Email cannot be empty",
-      });
-    }
-
-    // Email Validation if user already exist
-
-    if (email !== undefined) {
-      const normalizedEmail = email.trim().toLowerCase();
-
-      const emailexist = await User.findOne({
-        email: normalizedEmail,
-        _id: { $ne: id },
-      });
-
-      if (emailexist) {
-        return res.status(409).json({
-          message: "Email already exist",
-        });
-      }
-
-      user.email = normalizedEmail;
     }
 
     // Update data

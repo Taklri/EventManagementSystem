@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { PROGRAM_OPTIONS } from '../utils/authValidation.js';
 
 const pendingRegistrationSchema = new mongoose.Schema({
     studentId: {
@@ -19,6 +20,18 @@ const pendingRegistrationSchema = new mongoose.Schema({
         type: String,
         required: true,
         trim: true
+    },
+    yearLevel: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 40
+    },
+    program: {
+        type: String,
+        required: true,
+        trim: true,
+        enum: PROGRAM_OPTIONS
     },
     email: {
         type: String,

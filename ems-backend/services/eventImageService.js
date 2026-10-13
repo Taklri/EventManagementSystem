@@ -33,3 +33,21 @@ export const removeEventImage = async (publicId) => {
   cloudinaryConfig();
   await cloudinary.uploader.destroy(publicId, { resource_type: "image" });
 };
+
+export const uploadProfileImage = async (buffer) => {
+  cloudinaryConfig();
+  const folder = process.env.CLOUDINARY_PROFILE_FOLDER?.trim() || "ems/profiles";
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: "image" },
+      (error, result) => error ? reject(error) : resolve({
+        imageUrl: result.secure_url,
+        imagePublicId: result.public_id,
+      }),
+    );
+    stream.on("error", reject);
+    stream.end(buffer);
+  });
+};
+
+export const removeProfileImage = async (publicId) => removeEventImage(publicId);

@@ -12,7 +12,17 @@
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/users` | Public, rate-limited | Start student registration and send registration OTP. |
-| `PUT` | `/api/users/:id` | Bearer access token | Update own profile, or update another profile as an admin. |
+| `GET` | `/api/users/me` | Bearer access token | Return the signed-in profile without the password or image public id. |
+| `PATCH` | `/api/users/me` | Bearer access token | Update the signed-in user's name, and student ID when the caller is a student. |
+| `PUT` | `/api/users/me/photo` | Bearer access token | Replace the signed-in user's profile photo. |
+| `DELETE` | `/api/users/me/photo` | Bearer access token | Remove the signed-in user's profile photo. |
+| `POST` | `/api/users/me/email/otp` | Bearer access token, rate-limited | Check the current password, then email a code to the current address and remember the requested address. |
+| `POST` | `/api/users/me/email/verify` | Bearer access token, rate-limited | Apply the requested email after a valid code. |
+| `POST` | `/api/users/me/email/resend` | Bearer access token, rate-limited | Resend the email-change code to the current address. |
+| `POST` | `/api/users/me/password/otp` | Bearer access token, rate-limited | Check the current password, then email a code to the current address and store a hash of the requested password. |
+| `POST` | `/api/users/me/password/verify` | Bearer access token, rate-limited | Apply the new password after a valid code and issue a new session. |
+| `POST` | `/api/users/me/password/resend` | Bearer access token, rate-limited | Resend the password-change code to the current address. |
+| `PUT` | `/api/users/:id` | Bearer access token | Update own name, or another user's name as an admin. Email changes are ignored. |
 | `POST` | `/api/users/login` | Public, rate-limited | Validate credentials and send login OTP. |
 | `POST` | `/api/users/verify-otp` | Public, rate-limited | Verify login OTP and issue an access token plus refresh cookie. |
 | `POST` | `/api/users/verify-registration-otp` | Public, rate-limited | Verify registration OTP, create the student account, and issue tokens. |
@@ -43,7 +53,11 @@ Registration defaults new users to the `student` role. The current user route do
 - `POST /api/users/resend-reset-otp` accepts `{ challengeId }` and uses the login resend cooldown and limit.
 - `POST /api/users/reset-password` accepts `{ resetToken, password }`. The password uses the registration complexity rules. Success returns **200** and does not issue a session. Reused, expired, or wrong-purpose tokens return **401**.
 - Starting or resending an OTP returns `message`, `challengeId`, ISO `expiresAt`, and `retryAfterSeconds` (the configured resend cooldown). Registration start returns `202`; login start and resends return `200`.
-- Verification returns `accesstoken`, a `user` display object with `firstName`, `lastName`, and `role`, and the refresh cookie; registration verification returns `201`, login verification returns `200`. Refresh also returns the display object so each portal can restore the name and role after reload.
+- Verification returns `accesstoken`, a `user` display object with `firstName`, `lastName`, `role`, and `imageUrl`, and the refresh cookie; registration verification returns `201`, login verification returns `200`. Refresh also returns the display object so each portal can restore the name, role, and photo after reload.
+- `GET /api/users/me` returns `{ user }` with `id`, `firstName`, `middleName`, `lastName`, `email`, `role`, and `imageUrl`. Student responses also include `studentId`. A missing token returns **401**.
+- `PATCH /api/users/me` accepts `firstName`, optional `middleName`, `lastName`, and `studentId` for students. Student IDs use `YYYY-######` and are rejected with **409** when another user or pending registration already has that ID. An admin request does not change a student ID. Names follow the registration character rules.
+- Profile photos are JPEG, PNG, or WebP files up to 5 MB, sent as multipart field `photo`. The image is stored in Cloudinary. Responses include `imageUrl` and never include the Cloudinary public id. Replacing or removing a photo deletes the previous stored file.
+- Email and password changes require `currentPassword`. A missing password returns **400**. A wrong password returns **401** and does not create or email a code. A matching password sends a code to the current email address. The new email is stored only after `POST /api/users/me/email/verify` succeeds and the address is still unused. The new password hash is stored on its own challenge and applied only after `POST /api/users/me/password/verify`. That verification sets `passwordChangedAt`, returns a new `accesstoken`, and sets a new refresh cookie. Older access and refresh tokens are rejected. These codes use separate collections from login and password-reset codes, with the same expiry, five-attempt limit, resend cooldown, and rate limits as password reset. A failed write releases the code so it can be tried again.
 
 The admin dashboard response is `{ metrics: { total, upcoming, ongoing, archived, registrations, attendees }, recentEvents: [] }`. Event counts exclude archived events except for `archived`; `upcoming` starts after the request time and `ongoing` includes both date boundaries. `registrations` counts active registered records and `attendees` counts attendance records with a time-in. Recent events are non-archived, limited to six, and ordered by `updatedAt` descending. A missing bearer token returns `401`; a non-admin token returns `403`.
 - Resend cooldown failures return `429` with `retryAfterSeconds`. Expired challenges require restarting registration/login; consumed challenges and challenges with five incorrect attempts cannot be resent.

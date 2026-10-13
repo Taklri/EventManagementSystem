@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/AuthLayout';
 import PasswordVisibilityToggle from '../components/PasswordVisibilityToggle';
 import { authApi } from '../lib/api';
-import { sanitizeName, sanitizeStudentId, validateEmail, validateName, validatePassword, validateStudentId } from '../lib/authValidation';
+import { PROGRAM_OPTIONS, sanitizeName, sanitizeStudentId, validateEmail, validateName, validatePassword, validateProgram, validateStudentId, validateYearLevel } from '../lib/authValidation';
 
-const initialValues = { studentId: '', firstName: '', middleName: '', lastName: '', email: '', password: '', confirmPassword: '' };
+const initialValues = { studentId: '', firstName: '', middleName: '', lastName: '', yearLevel: '', program: '', email: '', password: '', confirmPassword: '' };
 
 function getErrors(values) {
   return {
@@ -13,6 +13,8 @@ function getErrors(values) {
     firstName: validateName(values.firstName),
     middleName: validateName(values.middleName, false),
     lastName: validateName(values.lastName),
+    yearLevel: validateYearLevel(values.yearLevel),
+    program: validateProgram(values.program),
     email: validateEmail(values.email),
     password: validatePassword(values.password),
     confirmPassword: !values.confirmPassword ? 'Please confirm your password.' : values.password !== values.confirmPassword ? 'Passwords do not match.' : '',
@@ -68,7 +70,7 @@ export default function RegisterPage() {
     try {
       const payload = { ...values };
       delete payload.confirmPassword;
-      const result = await authApi.register({ ...payload, studentId: payload.studentId.trim(), firstName: payload.firstName.trim(), middleName: payload.middleName.trim(), lastName: payload.lastName.trim(), email: payload.email.trim() });
+      const result = await authApi.register({ ...payload, studentId: payload.studentId.trim(), firstName: payload.firstName.trim(), middleName: payload.middleName.trim(), lastName: payload.lastName.trim(), yearLevel: payload.yearLevel.trim(), program: payload.program, email: payload.email.trim() });
       navigate('/register/otp', { state: { challengeId: result.challengeId, expiresAt: result.expiresAt, retryAfterSeconds: result.retryAfterSeconds, email: values.email.trim() } });
     } catch (error) {
       if (error.field && Object.prototype.hasOwnProperty.call(initialValues, error.field)) {
@@ -104,6 +106,19 @@ export default function RegisterPage() {
     </div>;
   }
 
+  function selectField(id, label, fieldName, options) {
+    const error = fieldError(fieldName);
+    return <div className={options.className || ''}>
+      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-slate-700">{label}<span className="ml-1 text-red-600" aria-hidden="true">*</span></label>
+      <select id={id} name={fieldName} required value={values[fieldName]} onChange={(event) => update(fieldName, event.target.value)} onBlur={() => setTouched((current) => ({ ...current, [fieldName]: true }))}
+        aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className={`${fieldClass(fieldName)} bg-white`}>
+        <option value="">Select your program</option>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+      {error && <p aria-live="polite" id={`${id}-error`} className="mt-1 text-[11px] leading-4 text-red-700">{error}</p>}
+    </div>;
+  }
+
   return (
     <AuthLayout>
       <h2 className="text-center text-2xl font-bold text-nu-dark">Create your account</h2>
@@ -114,6 +129,10 @@ export default function RegisterPage() {
           {field('first-name', 'First name', 'firstName', { autoComplete: 'given-name', className: 'sm:col-span-2' })}
           {field('middle-name', 'Middle name', 'middleName', { optional: true, autoComplete: 'additional-name' })}
           {field('last-name', 'Last name', 'lastName', { autoComplete: 'family-name' })}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {field('year-level', 'Year level', 'yearLevel', { placeholder: 'e.g. 1st Year', maxLength: 40 })}
+          {selectField('register-program', 'Program', 'program', PROGRAM_OPTIONS)}
         </div>
         {field('register-email', 'Email', 'email', { type: 'email', autoComplete: 'email', inputMode: 'email', placeholder: 'name@example.com' })}
         <div>

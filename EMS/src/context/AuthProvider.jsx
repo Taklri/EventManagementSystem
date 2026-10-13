@@ -32,6 +32,7 @@ export default function AuthProvider({ children }) {
     user,
     isRestoring,
     signIn: (token, signedInUser) => { setAccessToken(token); setUser(signedInUser); },
+    updateUser: (patch) => setUser((current) => (current ? { ...current, ...patch } : current)),
     signOut: async () => {
       await authApi.logout();
       setAccessToken(null);

@@ -28,7 +28,10 @@ let passwordHash;
 let codeHash;
 let mail;
 let failMail;
+// The registration payload includes the profile fields persisted on student accounts.
 const registration = { studentId: '2026-123456', firstName: 'María-José', middleName: '', lastName: 'O’Neill', email: 'student@example.invalid', password };
+registration.yearLevel = '1st Year';
+registration.program = 'Bachelor of Science in Computer Science';
 
 before(async () => {
   process.env.JWT_SECRET_KEY = randomUUID();
@@ -90,7 +93,7 @@ async function invoke(handler, body = {}, cookies = {}) {
 function assertSignedIn(res, status) {
   assert.equal(res.statusCode, status);
   assert.ok(typeof res.body.accesstoken === 'string');
-  assert.deepEqual(res.body.user, { firstName: registration.firstName, lastName: registration.lastName, role: 'student' });
+  assert.deepEqual(res.body.user, { firstName: registration.firstName, lastName: registration.lastName, role: 'student', imageUrl: null });
   const claims = jwt.verify(res.body.accesstoken, process.env.JWT_SECRET_KEY);
   assert.equal(claims.sub, userId.toString());
   assert.equal(claims.role, 'student');
@@ -107,6 +110,7 @@ test('registration rejects malformed types, IDs, names, emails, and weak/oversiz
   for (const changes of [
     { studentId: 2026123456 }, { studentId: '2026123456' }, { studentId: '2026-12345' },
     { firstName: 'Ana1' }, { lastName: 'Smith@' }, { middleName: 123 }, { firstName: ' ' },
+    { yearLevel: '' }, { yearLevel: 'x'.repeat(41) }, { program: 'Unknown program' }, { program: 123 },
     { email: 'a@b..com' }, { email: '.name@example.invalid' }, { email: 'a..b@example.invalid' }, { email: ['student@example.invalid'] },
     { password: 'short' }, { password: 'abcdefgh' }, { password: 'Abcdefg1 ' }, { password: `Aa1!${'x'.repeat(72)}` },
   ]) {
@@ -125,6 +129,8 @@ test('registration normalizes email/names, hashes credentials, allows non-NU ema
   assert.equal(res.statusCode, 202);
   assert.equal(stored.email, registration.email);
   assert.equal(stored.firstName, registration.firstName);
+  assert.equal(stored.yearLevel, registration.yearLevel);
+  assert.equal(stored.program, registration.program);
   assert.ok(await bcrypt.compare(password, stored.passwordHash));
   assert.equal(stored.role, undefined);
   assert.equal(stored.password, undefined);
@@ -285,6 +291,8 @@ test('registration verification claims the code, creates a student with the exis
   stub(PendingRegistration, 'deleteOne', async () => ({ deletedCount: 1 }));
   stub(User, 'create', async (fields) => {
     assert.ok(fields.password === passwordHash);
+    assert.equal(fields.yearLevel, registration.yearLevel);
+    assert.equal(fields.program, registration.program);
     assert.equal(fields.role, undefined);
     return user();
   });

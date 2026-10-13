@@ -10,6 +10,12 @@ import { startRegistrationFormCleanup } from './services/registrationFormCleanup
 dotenv.config();
 
 const app = express();
+
+// Render places the service behind one reverse proxy and forwards the client
+// address in X-Forwarded-For. Trust that single hop so rate limiting uses the
+// real client IP without trusting arbitrary proxy chains.
+app.set('trust proxy', 1);
+
 const frontendOrigin = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 
 app.use(cors({

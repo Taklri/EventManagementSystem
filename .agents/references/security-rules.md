@@ -36,7 +36,7 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 
 ## Rate limits
 
-- All `/api` routes use the global rate limiter: 100 requests per 10 minutes.
+- All `/api` routes use the global rate limiter: 300 requests per 10 minutes.
 - Login: 5 requests per 15 minutes.
 - Login OTP verification: 5 requests per 10 minutes.
 - Registration: 5 requests per hour.

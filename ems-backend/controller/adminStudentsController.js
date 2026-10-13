@@ -45,15 +45,16 @@ export const updateAdminStudent = async (req, res) => {
       return res.status(400).json({ message: 'Please provide valid student fields', field });
     }
     update[field] = body[field].trim();
+    const yearLevelError = field === 'yearLevel' ? yearLevelValidationError(update[field]) : '';
     const invalid = field === 'studentId' ? !/^\d{4}-\d{6}$/.test(update[field])
-      : field === 'yearLevel' ? Boolean(yearLevelValidationError(update[field]))
+      : field === 'yearLevel' ? Boolean(yearLevelError)
         : field === 'program' ? Boolean(programValidationError(update[field]))
           : update[field].length > 100 || (!(field === 'middleName' && !update[field]) && !namePattern.test(update[field]));
     if (invalid) {
       const message = field === 'studentId'
         ? 'Student ID must use the format YYYY-######'
         : field === 'yearLevel'
-          ? 'Year level must be 40 characters or fewer'
+          ? yearLevelError
           : field === 'program'
             ? 'Please select a valid program'
             : 'Names must contain letters, spaces, apostrophes, or hyphens (maximum 100 characters)';

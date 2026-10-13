@@ -14,11 +14,15 @@ import MyEventsPage from './pages/MyEventsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ProfilePage from './pages/ProfilePage';
 import AttendancePage from './pages/AttendancePage';
+import EventRegistrationPage from './pages/EventRegistrationPage';
 import AdminShell from './components/AdminShell';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminEventCreatePage from './pages/AdminEventCreatePage';
 import AdminEventDetailsPage from './pages/AdminEventDetailsPage';
 import AdminEventEditPage from './pages/AdminEventEditPage';
+import AdminStudentsPage from './pages/Adminstudentpage';
+import AdminRegistrationFormsPage from './pages/AdminRegistrationFormsPage';
+import AdminRegistrationFormEditPage from './pages/AdminRegistrationFormEditPage';
 import { Toaster } from './components/ui/sonner';
 
 const AdminEventsPage = lazy(() => import('./pages/AdminEventsPage'));
@@ -96,6 +100,7 @@ const RouteContent = () => {
       >
         <Route path="/home" element={<HomePage />} />
         <Route path="/events/:id" element={<EventDetailsPage />} />
+        <Route path="/events/:id/register" element={<EventRegistrationPage />} />
         <Route path="/my-events" element={<MyEventsPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
@@ -129,6 +134,10 @@ const RouteContent = () => {
         <Route path="events/new" element={<AdminEventCreatePage />} />
         <Route path="events/:id" element={<AdminEventDetailsPage />} />
         <Route path="events/:id/edit" element={<AdminEventEditPage />} />
+        <Route path="students" element={<AdminStudentsPage />} />
+        <Route path="registration-forms" element={<AdminRegistrationFormsPage />} />
+        <Route path="registration-forms/new" element={<AdminRegistrationFormEditPage />} />
+        <Route path="registration-forms/:id/edit" element={<AdminRegistrationFormEditPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to={destination || '/'} replace />} />

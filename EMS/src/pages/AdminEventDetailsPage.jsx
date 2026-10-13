@@ -20,6 +20,7 @@ import {
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { adminApi, eventsApi } from '../lib/api';
+import AdminRegistrationRoster from '../components/AdminRegistrationRoster';
 
 const ParticipationCard = ({
   event,
@@ -49,6 +50,7 @@ const ParticipationCard = ({
         <Button
           variant="outline"
           className="w-full @min-[520px]:w-auto"
+          disabled={event.isArchived}
           onClick={openAttendanceSession}
         >
           <QrCode size={15} aria-hidden="true" />
@@ -84,7 +86,7 @@ const ParticipationCard = ({
           {attendanceError}
         </p>
       )}
-      {attendanceSession && (
+      {attendanceSession && !event.isArchived && (
         <div className="mt-5 flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-5">
           <QRCodeSVG
             value={`${window.location.origin}/attendance/${event._id}?token=${attendanceSession.token}`}
@@ -92,8 +94,7 @@ const ParticipationCard = ({
             includeMargin
           />
           <p className="text-center text-xs text-slate-500">
-            Keep this code visible while students arrive and leave. It expires at the end of the
-            event.
+            This code expires at {new Date(attendanceSession.expiresAt).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}. Select Display QR again to refresh it.
           </p>
         </div>
       )}
@@ -367,6 +368,9 @@ const AdminEventDetailsPage = () => {
             attendanceError={attendanceError}
             openAttendanceSession={openAttendanceSession}
           />
+          {event.registrationMode === 'required' && (
+            <AdminRegistrationRoster eventId={id} accessToken={accessToken} />
+          )}
         </>
       )}
     </div>

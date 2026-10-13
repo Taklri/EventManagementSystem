@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { PROGRAM_OPTIONS } from '../utils/authValidation.js';
 
 const userSchema = new mongoose.Schema({
     studentId: {
@@ -20,6 +21,18 @@ const userSchema = new mongoose.Schema({
         type: String,
         trim: true,
         required: true,
+    },
+    yearLevel: {
+        type: String,
+        trim: true,
+        required: true,
+        maxlength: 40,
+    },
+    program: {
+        type: String,
+        trim: true,
+        required: true,
+        enum: PROGRAM_OPTIONS,
     },
     email: {
         type: String,

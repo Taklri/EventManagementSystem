@@ -5,13 +5,15 @@ import {connectDB} from './config/db.js';
 import routes from './routes/index.js';
 import cookieParser from 'cookie-parser';
 import { apiRateLimiter } from './middleware/rateLimiter.js';
+import { startRegistrationFormCleanup } from './services/registrationFormCleanupService.js';
 
 dotenv.config();
 
 const app = express();
+const frontendOrigin = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 
 app.use(cors({
-    origin: process.env.FRONTEND_URL,
+    origin: frontendOrigin,
     credentials: true
 }));
 app.use(express.json());
@@ -26,6 +28,7 @@ app.get("/", (req,res)=> {
 
 const startServer = async () => {
     await connectDB();
+    startRegistrationFormCleanup();
 
     app.listen(process.env.PORT, ()=> {
         console.log(`Listening to PORT: ${process.env.PORT}`)

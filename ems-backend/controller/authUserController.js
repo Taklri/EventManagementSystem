@@ -408,6 +408,8 @@ export const verifyRegistrationOtp = async (req, res) => {
                 firstName: pendingRegistration.firstName,
                 middleName: pendingRegistration.middleName,
                 lastName: pendingRegistration.lastName,
+                yearLevel: pendingRegistration.yearLevel,
+                program: pendingRegistration.program,
                 email: pendingRegistration.email,
                 password: pendingRegistration.passwordHash
             });

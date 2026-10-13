@@ -18,7 +18,7 @@ Production hosting must forward `/api` to the backend or provide `VITE_API_BASE_
 - `/register`: registration, followed by `/register/otp`.
 - `/home`: authenticated welcome screen with sign out.
 
-Both OTP screens require a challenge from the preceding form. Access tokens stay in memory; the HTTP-only refresh cookie restores a session after reload. Registration accepts valid personal email addresses and creates a student account only after email verification.
+Both OTP screens require a challenge from the preceding form. Access tokens stay in memory; the HTTP-only refresh cookie restores a session after reload. Registration collects the student ID, names, year level, and program, accepts valid personal email addresses, and creates a student account only after email verification.
 
 ## Checks
 

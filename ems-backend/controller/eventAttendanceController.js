@@ -9,7 +9,7 @@ import {
   removeEventImage,
   uploadAttendancePhoto,
 } from "../services/eventImageService.js";
-import { notifyStudent } from "../services/notificationService.js";
+import { notifyAllAdmins, notifyStudent } from "../services/notificationService.js";
 
 const EARLY_CHECKIN_MS = 30 * 60 * 1000;
 const LATE_CHECKOUT_MS = 30 * 60 * 1000;
@@ -221,6 +221,15 @@ const recordLegacyAttendance = async (req, res) => {
         studentId: student.studentId,
         timeIn: context.now,
       });
+      const actorName = [student.firstName, student.middleName, student.lastName].filter(Boolean).join(" ");
+      await notifyAllAdmins({
+        type: "attendance",
+        title: "Time in",
+        message: `${actorName || "A student"} timed in for ${context.event.title}.`,
+        event: context.event._id,
+        actorName,
+        actorStudentId: student.studentId || "",
+      });
       return res.status(201).json({ message: "Time in recorded", attendance });
     }
     const attendance = await EventAttendance.findOneAndUpdate(
@@ -230,6 +239,14 @@ const recordLegacyAttendance = async (req, res) => {
     );
     if (!attendance)
       return res.status(409).json({ message: "Attendance already completed" });
+    await notifyAllAdmins({
+      type: "attendance",
+      title: "Time out",
+      message: `${attendance.studentName || "A student"} timed out for ${context.event.title}.`,
+      event: context.event._id,
+      actorName: attendance.studentName || "",
+      actorStudentId: attendance.studentId || "",
+    });
     return res.status(200).json({ message: "Time out recorded", attendance });
   } catch (error) {
     if (error.code === 11000)
@@ -305,6 +322,15 @@ export const recordAttendance = async (req, res) => {
         message: `Attendance was recorded for ${context.event.title}.`,
         event: context.event._id,
       });
+      const actorName = [student.firstName, student.middleName, student.lastName].filter(Boolean).join(" ");
+      await notifyAllAdmins({
+        type: "attendance",
+        title: "Time in",
+        message: `${actorName || "A student"} timed in for ${context.event.title}.`,
+        event: context.event._id,
+        actorName,
+        actorStudentId: student.studentId || "",
+      });
       return res
         .status(201)
         .json({ message: "Time in recorded", attendance: attendancePayload(attendance) });
@@ -331,6 +357,14 @@ export const recordAttendance = async (req, res) => {
       title: "Attendance recorded",
       message: `Attendance was recorded for ${context.event.title}.`,
       event: context.event._id,
+    });
+    await notifyAllAdmins({
+      type: "attendance",
+      title: "Time out",
+      message: `${attendance.studentName || "A student"} timed out for ${context.event.title}.`,
+      event: context.event._id,
+      actorName: attendance.studentName || "",
+      actorStudentId: attendance.studentId || "",
     });
     return res
       .status(200)

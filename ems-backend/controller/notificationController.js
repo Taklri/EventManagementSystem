@@ -30,6 +30,8 @@ const notificationPayload = (notification) => {
     message: notification.message,
     event: populated ? populated._id : notification.event || null,
     eventDetails: eventSummary(populated),
+    actorName: notification.actorName || "",
+    actorStudentId: notification.actorStudentId || "",
     readAt: notification.readAt,
     createdAt: notification.createdAt,
   };

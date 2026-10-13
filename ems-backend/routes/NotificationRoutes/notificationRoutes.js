@@ -9,7 +9,7 @@ import { authorizeRoles } from "../../middleware/authorize.js";
 
 const router = express.Router();
 
-router.use(authenticate, authorizeRoles("student"));
+router.use(authenticate, authorizeRoles("student", "admin"));
 router.get("/", getNotifications);
 router.patch("/read-all", markAllNotificationsRead);
 router.patch("/:id/read", markNotificationRead);

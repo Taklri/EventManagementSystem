@@ -34,12 +34,12 @@
 | `POST` | `/api/users/reset-password` | Public, rate-limited | Set a new password with a valid reset token. |
 | `POST` | `/api/users/refresh` | Refresh cookie | Refresh the access token. |
 | `POST` | `/api/users/logout` | Refresh cookie when present | Clear the refresh-token cookie. |
-| `GET` | `/api/notifications` | Bearer access token + `student` role | List the signed-in student's notifications, newest first, with `unreadCount`. |
-| `PATCH` | `/api/notifications/read-all` | Bearer access token + `student` role | Mark all of that student's unread notifications as read. |
-| `PATCH` | `/api/notifications/:id/read` | Bearer access token + `student` role | Mark one of that student's notifications as read. |
+| `GET` | `/api/notifications` | Bearer access token + `student` or `admin` role | List the signed-in user's notifications, newest first, with `unreadCount`. |
+| `PATCH` | `/api/notifications/read-all` | Bearer access token + `student` or `admin` role | Mark all of that user's unread notifications as read. |
+| `PATCH` | `/api/notifications/:id/read` | Bearer access token + `student` or `admin` role | Mark one of that user's notifications as read. |
 | `GET` | `/api/admin/dashboard` | Bearer access token + `admin` role | Return event metrics and recently updated non-archived events for the admin dashboard. |
 
-Student registration and attendance notifications are created only after those actions succeed. Creating an event notifies every current student that the event is available. `GET /api/notifications` returns `{ notifications, unreadCount }`. Each notification includes `_id`, `type`, `title`, `message`, `event`, `eventDetails`, `readAt`, and `createdAt`. `event` remains the event id used for navigation. `eventDetails` is `null` when the event no longer exists; otherwise it includes `id`, `title`, `description`, `location`, `startDate`, `endDate`, `eventType`, `organizerName`, `imageUrl`, `isArchived`, and the computed `status`. An admin token returns `403`. A notification id that does not belong to the student returns `404`.
+Student registration and attendance notifications are created only after those actions succeed. Creating an event notifies every current student that the event is available. A successful registration, waitlist placement, cancellation, time in, or time out also notifies every current admin. `GET /api/notifications` returns `{ notifications, unreadCount }`. Each notification includes `_id`, `type`, `title`, `message`, `event`, `eventDetails`, `actorName`, `actorStudentId`, `readAt`, and `createdAt`. `actorName` and `actorStudentId` are empty on student notices. `event` remains the event id used for navigation. `eventDetails` is `null` when the event no longer exists; otherwise it includes `id`, `title`, `description`, `location`, `startDate`, `endDate`, `eventType`, `organizerName`, `imageUrl`, `isArchived`, and the computed `status`. A notification id that does not belong to the signed-in user returns `404`.
 
 Registration defaults new users to the `student` role. The current user route does not expose the `getUsers` controller as an endpoint.
 

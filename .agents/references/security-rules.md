@@ -29,6 +29,7 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 - Event creation, update, archive, and unarchive operations require the `admin` role.
 - Event catalog and detail reads require an authenticated `student` or `admin` role. Student registration, cancellation, and attendance endpoints require the `student` role. Registration and attendance summaries, QR session creation, and attendance record lookup require the `admin` role.
 - The admin dashboard and admin event-list endpoints require a bearer token and the `admin` role. Portal route guards send students and admins to their own landing pages; backend middleware remains the authority for protected API access.
+- Notification list and read routes allow the signed-in student or admin. Each user only receives and updates their own notices.
 - Registration form list, create, read, update, archive, and unarchive endpoints require the `admin` role. Students cannot manage forms, and archived forms are not selectable for new event creation.
 - Profile name updates allow an admin to update any profile or a user to update their own profile. Email changes are not accepted on `PUT /api/users/:id`.
 - A signed-in user changes their own email or password only after a code sent to the current email address. Those codes are stored separately from login and password-reset codes. A successful password change sets `passwordChangedAt` and replaces the current session token; older access and refresh tokens are rejected.

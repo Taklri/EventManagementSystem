@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft, ImagePlus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ImagePlus, Plus, Trash2, X } from 'lucide-react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
@@ -50,6 +50,36 @@ const validDay = (value) => {
 };
 
 const validTime = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+const timeToMinutes = (value) => {
+  if (!validTime(value)) return null;
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
+};
+
+const maxTime = (values) => {
+  const validValues = values.filter((value) => timeToMinutes(value) !== null);
+  return validValues.reduce(
+    (current, value) =>
+      current === undefined || timeToMinutes(value) > timeToMinutes(current) ? value : current,
+    undefined,
+  );
+};
+
+const minTime = (values) => {
+  const validValues = values.filter((value) => timeToMinutes(value) !== null);
+  return validValues.reduce(
+    (current, value) =>
+      current === undefined || timeToMinutes(value) < timeToMinutes(current) ? value : current,
+    undefined,
+  );
+};
+
+const laterDay = (values) =>
+  values.filter((value) => validDay(value)).reduce(
+    (current, value) => (!current || value > current ? value : current),
+    undefined,
+  );
 
 const campusParts = (value) => {
   const parts = toCampusInputParts(value);
@@ -153,38 +183,76 @@ const buildSchema = (allowPastDates = false) =>
         });
       }
       values.agenda.forEach((item, index) => {
-        if (`${item.endDay}T${item.endTime}` <= `${item.startDay}T${item.startTime}`) {
+        const hasValidAgendaRange =
+          validDay(item.startDay) &&
+          validTime(item.startTime) &&
+          validDay(item.endDay) &&
+          validTime(item.endTime);
+        if (hasValidAgendaRange && `${item.endDay}T${item.endTime}` <= `${item.startDay}T${item.startTime}`) {
           context.addIssue({
             code: 'custom',
             path: ['agenda', index, 'endDay'],
-            message: 'End must be after start.',
+            message: 'Program end must be after its start.',
           });
         }
         if (
           validDay(values.startDay) &&
           validDay(values.endDay) &&
-          (`${item.startDay}T${item.startTime}` < `${values.startDay}T${values.startTime}` ||
-            `${item.endDay}T${item.endTime}` > `${values.endDay}T${values.endTime}`)
+          validTime(values.startTime) &&
+          validTime(values.endTime) &&
+          hasValidAgendaRange
         ) {
-          context.addIssue({
-            code: 'custom',
-            path: ['agenda', index, 'startDay'],
-            message: 'Agenda must fit inside the event schedule.',
-          });
+          if (`${item.startDay}T${item.startTime}` < `${values.startDay}T${values.startTime}`) {
+            context.addIssue({
+              code: 'custom',
+              path: ['agenda', index, 'startDay'],
+              message: 'Program start must stay inside the event schedule.',
+            });
+          }
+          if (`${item.endDay}T${item.endTime}` > `${values.endDay}T${values.endTime}`) {
+            context.addIssue({
+              code: 'custom',
+              path: ['agenda', index, 'endDay'],
+              message: 'Program end must stay inside the event schedule.',
+            });
+          }
         }
+        const speakerKeys = new Set(values.speakers.map((speaker) => speaker.clientKey));
+        (item.speakerKeys || []).forEach((key) => {
+          if (!speakerKeys.has(key)) {
+            context.addIssue({
+              code: 'custom',
+              path: ['agenda', index, 'speakerKeys'],
+              message: 'Choose speakers from the list above.',
+            });
+          }
+        });
       });
     });
 
 const schema = buildSchema();
 const editSchema = buildSchema(true);
 
-const Field = ({ id, label, error, help, reserveErrorSpace = false, children }) => (
+const Field = ({
+  id,
+  label,
+  error,
+  help,
+  required = true,
+  reserveErrorSpace = false,
+  children,
+}) => (
   <div className="min-w-0 space-y-2">
     <Label htmlFor={id}>
-      {label}{' '}
-      <span className="text-red-700" aria-hidden="true">
-        *
-      </span>
+      {label}
+      {required && (
+        <>
+          {' '}
+          <span className="text-red-700" aria-hidden="true">
+            *
+          </span>
+        </>
+      )}
     </Label>
     {children}
     {help && (
@@ -284,7 +352,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     setError,
     setValue,
     trigger,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isSubmitted },
   } = form;
 
   useEffect(
@@ -384,9 +452,28 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
       }
     } catch (error) {
       const fieldMap = { startDate: 'startDay', endDate: 'endDay' };
+      const agendaIssuePath = (path) => {
+        const match = /^agenda\.(\d+)\.(.+)$/.exec(path || '');
+        if (!match) return null;
+        const [, index, fieldName] = match;
+        const fieldMapForAgenda = { startDate: 'startDay', endDate: 'endDay' };
+        return `agenda.${index}.${fieldMapForAgenda[fieldName] || fieldName}`;
+      };
+      if (Array.isArray(error.issues) && error.issues.length > 0) {
+        for (const issue of error.issues) {
+          const path = agendaIssuePath(issue.path);
+          if (path) setError(path, { type: 'server', message: issue.message });
+        }
+        setError('agenda.root', { type: 'server', message: error.message });
+        const firstIssuePath = agendaIssuePath(error.issues[0]?.path);
+        if (firstIssuePath) window.requestAnimationFrame(() => focusAgendaField(firstIssuePath));
+        return;
+      }
       const field = fieldMap[error.field] || error.field;
       if (field === 'coverImage') {
         setImageError(error.message);
+      } else if (field === 'agenda') {
+        setError('agenda.root', { type: 'server', message: error.message });
       } else if (field && Object.hasOwn(values, field)) {
         setError(field, { type: 'server', message: error.message });
       } else if (error.status === 401) {
@@ -412,13 +499,53 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     control: form.control,
     name: ['startDay', 'startTime', 'endDay', 'endTime'],
   });
+  const agendaValues = useWatch({ control: form.control, name: 'agenda' }) || [];
   const registrationMode = useWatch({ control: form.control, name: 'registrationMode' });
   const tagValues = useWatch({ control: form.control, name: 'tags' });
   const speakerValues = useWatch({ control: form.control, name: 'speakers' });
 
+  const eventScheduleReady =
+    validDay(startDay) &&
+    validTime(startTime) &&
+    validDay(endDay) &&
+    validTime(endTime) &&
+    `${endDay}T${endTime}` > `${startDay}T${startTime}` &&
+    (editing || (startDay >= getCampusToday() && endDay >= getCampusToday()));
+
+  const getAgendaTimeBounds = (agendaValue, phase) => {
+    const day = phase === 'start' ? agendaValue.startDay : agendaValue.endDay;
+    const minimums = [];
+    const maximums = [];
+
+    if (phase === 'start') {
+      if (day === startDay) minimums.push(startTime);
+      if (day === endDay) maximums.push(endTime);
+    } else {
+      if (day === startDay) minimums.push(startTime);
+      if (day === agendaValue.startDay) minimums.push(agendaValue.startTime);
+      if (day === endDay) maximums.push(endTime);
+    }
+
+    return {
+      minTime: maxTime(minimums),
+      maxTime: minTime(maximums),
+      minTimeExclusive:
+        phase === 'end' && day === agendaValue.startDay && validTime(agendaValue.startTime),
+    };
+  };
+
   const updateSchedule = async (name, value) => {
     setValue(name, value, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
-    if (getValues('endDay') && getValues('endTime')) await trigger('endDay');
+    await trigger(['startDay', 'startTime', 'endDay', 'endTime', 'agenda']);
+  };
+
+  const updateAgendaSchedule = async (index, name, value) => {
+    setValue(`agenda.${index}.${name}`, value, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+    await trigger('agenda');
   };
 
   const chooseSpeakerImage = (key, file) => {
@@ -452,6 +579,55 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     }
   };
 
+  const removeSpeaker = (index) => {
+    const key = speakerValues?.[index]?.clientKey;
+    speakerFields.remove(index);
+    if (!key) return;
+
+    const nextAgenda = getValues('agenda').map((item) => ({
+      ...item,
+      speakerKeys: (item.speakerKeys || []).filter((speakerKey) => speakerKey !== key),
+    }));
+    setValue('agenda', nextAgenda, { shouldDirty: true, shouldValidate: true });
+    trigger('agenda');
+  };
+
+  const focusAgendaField = (path) => {
+    const match = /^agenda\.(\d+)\.(.+)$/.exec(path || '');
+    if (!match) return;
+    const [, index, field] = match;
+    const target = document.getElementById(`agenda-${index}-${field}`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.focus();
+    }
+  };
+
+  const handleInvalidSubmit = (formErrors) => {
+    const agendaErrors = formErrors.agenda;
+    const firstIndex = Array.isArray(agendaErrors)
+      ? agendaErrors.findIndex((item) => item && Object.keys(item).length > 0)
+      : -1;
+    if (firstIndex < 0) return;
+
+    const fieldNames = ['title', 'description', 'startDay', 'startTime', 'endDay', 'endTime'];
+    const firstField = fieldNames.find((name) => agendaErrors[firstIndex]?.[name]);
+    window.requestAnimationFrame(() =>
+      focusAgendaField(`agenda.${firstIndex}.${firstField || 'title'}`),
+    );
+  };
+
+  const agendaErrorSummary = agendaValues
+    .map((_, index) => {
+      const itemErrors = errors.agenda?.[index];
+      const messages = ['title', 'description', 'startDay', 'startTime', 'endDay', 'endTime', 'speakerKeys']
+        .map((field) => itemErrors?.[field]?.message)
+        .filter(Boolean);
+      return messages.length ? { index, messages: [...new Set(messages)] } : null;
+    })
+    .filter(Boolean);
+  const agendaRootMessage = errors.agenda?.root?.message || errors.agenda?.message;
+
   return (
     <div className="mx-auto max-w-4xl pb-8">
       <Link
@@ -478,7 +654,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
       </header>
 
       <Form {...form}>
-        <form onSubmit={handleSubmit(submit)} noValidate className="space-y-5">
+        <form onSubmit={handleSubmit(submit, handleInvalidSubmit)} noValidate className="space-y-5">
           <section
             className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="details-heading"
@@ -572,18 +748,25 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
             />
             <div className="grid gap-5 sm:grid-cols-2">
               <Field id="eventType" label="Event type" error={errors.eventType?.message}>
-                <select
-                  id="eventType"
-                  className={`min-h-11 w-full rounded-lg border bg-white px-3 text-sm outline-none focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/15 ${fieldClass('eventType')}`}
-                  disabled={isSubmitting}
-                  {...register('eventType')}
-                >
-                  {EVENT_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    id="eventType"
+                    className={`min-h-11 w-full appearance-none rounded-lg border bg-white px-3 pr-10 text-sm outline-none focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/15 ${fieldClass('eventType')}`}
+                    disabled={isSubmitting}
+                    {...register('eventType')}
+                  >
+                    {EVENT_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    size={17}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
+                </div>
               </Field>
               <div className="space-y-2">
                 <Label htmlFor="tag-input">Tags</Label>
@@ -606,6 +789,9 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                     type="button"
                     variant="outline"
                     disabled={isSubmitting || tagFields.fields.length >= 8}
+                    aria-label="Add tag"
+                    title="Add tag"
+                    className="h-11 w-11 shrink-0 p-0"
                     onClick={() => {
                       const input = document.getElementById('tag-input');
                       const value = input?.value.trim();
@@ -615,7 +801,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                       }
                     }}
                   >
-                    Add
+                    <Plus size={17} aria-hidden="true" />
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -627,11 +813,12 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                       {tagValues?.[index]?.value}
                       <button
                         type="button"
-                        className="rounded-full px-1 text-slate-500 hover:text-red-700"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-red-700"
                         aria-label={`Remove tag ${tagValues?.[index]?.value || 'tag'}`}
+                        title={`Remove tag ${tagValues?.[index]?.value || 'tag'}`}
                         onClick={() => tagFields.remove(index)}
                       >
-                        ×
+                        <X size={13} aria-hidden="true" />
                       </button>
                     </span>
                   ))}
@@ -640,382 +827,6 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                   Up to 8 tags. Press Enter or Add after typing.
                 </p>
               </div>
-            </div>
-          </section>
-
-          <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
-            aria-labelledby="agenda-heading"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <SectionHeader
-                id="agenda-heading"
-                title="Program agenda"
-                description="Add sessions, talks, or activities inside the event schedule."
-              />
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isSubmitting || agendaFields.fields.length >= 40}
-                onClick={() =>
-                  agendaFields.append({
-                    title: '',
-                    description: '',
-                    startDay: startDay || '',
-                    startTime: startTime || '',
-                    endDay: endDay || '',
-                    endTime: endTime || '',
-                    speakerKeys: [],
-                  })
-                }
-              >
-                Add program
-              </Button>
-            </div>
-            {agendaFields.fields.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                No program items yet. Add one when the event has a detailed schedule.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {agendaFields.fields.map((field, index) => (
-                  <div key={field.id} className="rounded-xl border border-slate-200 p-4">
-                    <div className="mb-4 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-nu-dark">Program {index + 1}</p>
-                      <button
-                        type="button"
-                        className="text-xs font-semibold text-red-700 hover:underline"
-                        onClick={() => agendaFields.remove(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field
-                        id={`agenda-${index}-title`}
-                        label="Title"
-                        error={errors.agenda?.[index]?.title?.message}
-                      >
-                        <Input
-                          id={`agenda-${index}-title`}
-                          maxLength={160}
-                          placeholder="Opening remarks"
-                          {...register(`agenda.${index}.title`)}
-                        />
-                      </Field>
-                      <div className="space-y-2">
-                        <Label htmlFor={`agenda-${index}-description`}>Description</Label>
-                        <Input
-                          id={`agenda-${index}-description`}
-                          maxLength={500}
-                          placeholder="Optional details"
-                          {...register(`agenda.${index}.description`)}
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label htmlFor={`agenda-${index}-startDay`}>Starts</Label>
-                          <input
-                            type="date"
-                            id={`agenda-${index}-startDay`}
-                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
-                            {...register(`agenda.${index}.startDay`)}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor={`agenda-${index}-startTime`}>Time</Label>
-                          <input
-                            type="time"
-                            id={`agenda-${index}-startTime`}
-                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
-                            {...register(`agenda.${index}.startTime`)}
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label htmlFor={`agenda-${index}-endDay`}>Ends</Label>
-                          <input
-                            type="date"
-                            id={`agenda-${index}-endDay`}
-                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
-                            {...register(`agenda.${index}.endDay`)}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor={`agenda-${index}-endTime`}>Time</Label>
-                          <input
-                            type="time"
-                            id={`agenda-${index}-endTime`}
-                            className="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm"
-                            {...register(`agenda.${index}.endTime`)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    {speakerFields.fields.length > 0 && (
-                      <fieldset className="mt-4">
-                        <legend className="text-xs font-semibold text-slate-600">Speakers</legend>
-                        <div className="mt-2 flex flex-wrap gap-3">
-                          {speakerFields.fields.map((speaker, speakerIndex) => (
-                            <label
-                              key={speaker.id}
-                              className="inline-flex items-center gap-2 text-xs text-slate-600"
-                            >
-                              <input
-                                type="checkbox"
-                                value={speakerValues?.[speakerIndex]?.clientKey || ''}
-                                {...register(`agenda.${index}.speakerKeys`)}
-                              />
-                              {speakerValues?.[speakerIndex]?.name || `Speaker ${speakerIndex + 1}`}
-                            </label>
-                          ))}
-                        </div>
-                      </fieldset>
-                    )}
-                    {errors.agenda?.[index]?.startDay?.message && (
-                      <p className="mt-3 text-xs text-red-700">
-                        {errors.agenda[index].startDay.message}
-                      </p>
-                    )}
-                    {errors.agenda?.[index]?.endDay?.message && (
-                      <p className="mt-1 text-xs text-red-700">
-                        {errors.agenda[index].endDay.message}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
-            aria-labelledby="speakers-heading"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <SectionHeader
-                id="speakers-heading"
-                title="Speakers"
-                description="Add the people students will hear from at this event."
-              />
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isSubmitting || speakerFields.fields.length >= 30}
-                onClick={() =>
-                  speakerFields.append({
-                    clientKey: crypto.randomUUID(),
-                    name: '',
-                    role: '',
-                    photoUrl: '',
-                  })
-                }
-              >
-                Add speaker
-              </Button>
-            </div>
-            {speakerFields.fields.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                No speakers added.
-              </p>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {speakerFields.fields.map((field, index) => {
-                  const key = speakerValues?.[index]?.clientKey || field.clientKey;
-                  const name = speakerValues?.[index]?.name || '';
-                  const existingPhoto = event?.speakers?.find(
-                    (speaker) => speaker.clientKey === key,
-                  )?.photoUrl;
-                  const preview = speakerPreviews[key] || existingPhoto;
-                  return (
-                    <div key={field.id} className="rounded-xl border border-slate-200 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          {preview ? (
-                            <img
-                              src={preview}
-                              alt=""
-                              className="h-12 w-12 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
-                              {(name || '?').slice(0, 1).toUpperCase()}
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-sm font-semibold text-nu-dark">
-                              Speaker {index + 1}
-                            </p>
-                            <label className="text-xs font-medium text-nu-navy underline">
-                              <input
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                className="sr-only"
-                                onChange={(change) =>
-                                  chooseSpeakerImage(key, change.target.files?.[0])
-                                }
-                              />
-                              {preview ? 'Replace photo' : 'Add photo'}
-                            </label>
-                            {preview && (
-                              <button
-                                type="button"
-                                className="ml-3 text-xs font-medium text-red-700 underline"
-                                onClick={() => removeSpeakerImage(key)}
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-red-700 hover:underline"
-                          onClick={() => speakerFields.remove(index)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        <Input
-                          aria-label={`Speaker ${index + 1} name`}
-                          placeholder="Full name"
-                          {...register(`speakers.${index}.name`)}
-                        />
-                        <Input
-                          aria-label={`Speaker ${index + 1} role`}
-                          placeholder="Role or designation"
-                          {...register(`speakers.${index}.role`)}
-                        />
-                        {errors.speakers?.[index] && (
-                          <p className="text-xs text-red-700">
-                            {errors.speakers[index].name?.message ||
-                              errors.speakers[index].role?.message}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
-            aria-labelledby="registration-heading"
-          >
-            <SectionHeader
-              id="registration-heading"
-              title="Registration"
-              description="Choose whether students need to reserve a place."
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field
-                id="registrationMode"
-                label="Registration mode"
-                error={errors.registrationMode?.message}
-              >
-                <select
-                  id="registrationMode"
-                  className="min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
-                  disabled={isSubmitting}
-                  {...register('registrationMode')}
-                >
-                  <option value="none">No registration</option>
-                  <option value="required">Registration required</option>
-                </select>
-              </Field>
-              {registrationMode === 'required' && (
-                <Field
-                  id="capacity"
-                  label="Capacity (optional)"
-                  error={errors.capacity?.message}
-                  help="Leave blank for unlimited registration."
-                >
-                  <Input
-                    id="capacity"
-                    type="number"
-                    min="1"
-                    max="100000"
-                    inputMode="numeric"
-                    placeholder="e.g. 100"
-                    aria-invalid={Boolean(errors.capacity)}
-                    {...register('capacity')}
-                  />
-                </Field>
-              )}
-            </div>
-            {registrationMode === 'required' && (
-              <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-                Registration closes when the event starts. Students may cancel before then; when
-                capacity is full, new registrations enter a waitlist.
-              </p>
-            )}
-          </section>
-
-          <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
-            aria-labelledby="guidance-heading"
-          >
-            <SectionHeader
-              id="guidance-heading"
-              title="Requirements and reminders"
-              description="Give students practical information before they attend."
-            />
-            <div className="grid gap-6 sm:grid-cols-2">
-              {[
-                [
-                  'requirements',
-                  'Requirements',
-                  requirementFields,
-                  'What students need to bring or complete',
-                ],
-                ['reminders', 'Reminders', reminderFields, 'Arrival, dress, or preparation notes'],
-              ].map(([name, label, fields, placeholder]) => (
-                <div key={name}>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-nu-dark">{label}</h3>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="min-h-9 px-3 text-xs"
-                      disabled={isSubmitting || fields.fields.length >= 20}
-                      onClick={() => fields.append({ value: '' })}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  {fields.fields.length === 0 ? (
-                    <p className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                      None added.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {fields.fields.map((field, index) => (
-                        <div key={field.id} className="flex gap-2">
-                          <Input
-                            maxLength={240}
-                            placeholder={placeholder}
-                            {...register(`${name}.${index}.value`)}
-                          />
-                          <button
-                            type="button"
-                            className="rounded-md px-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-                            aria-label={`Remove ${label.toLowerCase()} item ${index + 1}`}
-                            onClick={() => fields.remove(index)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
           </section>
 
@@ -1070,7 +881,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                       id="endDay"
                       label="End date"
                       value={endDay}
-                      minDate={startDay}
+                      minDate={validDay(startDay) ? startDay : undefined}
                       allowPast={editing}
                       onChange={(value) => updateSchedule('endDay', value)}
                       invalid={Boolean(errors.endDay)}
@@ -1091,6 +902,475 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                   </Field>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="agenda-heading"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <SectionHeader
+                id="agenda-heading"
+                title="Program agenda"
+                description="Add sessions, talks, or activities inside the event schedule."
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting || !eventScheduleReady || agendaFields.fields.length >= 40}
+                aria-label="Add program"
+                title="Add program"
+                className="h-11 w-11 shrink-0 p-0"
+                onClick={() =>
+                  agendaFields.append({
+                    title: '',
+                    description: '',
+                    startDay: startDay || '',
+                    startTime: startTime || '',
+                    endDay: endDay || '',
+                    endTime: endTime || '',
+                    speakerKeys: [],
+                  })
+                }
+              >
+                <Plus size={17} aria-hidden="true" />
+              </Button>
+            </div>
+            <p className="-mt-3 mb-5 text-xs leading-5 text-slate-500">
+              {eventScheduleReady
+                ? 'Program items can overlap for parallel sessions and must stay within the event schedule.'
+                : 'Complete a valid event schedule above before adding program items.'}
+            </p>
+            {(isSubmitted || agendaRootMessage) && (agendaErrorSummary.length > 0 || agendaRootMessage) && (
+              <div
+                className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                role="alert"
+                aria-live="polite"
+              >
+                <p className="font-semibold">Please fix the highlighted program items.</p>
+                {agendaRootMessage && (
+                  <p className="mt-1 text-xs text-red-700">{agendaRootMessage}</p>
+                )}
+                <ul className="mt-2 space-y-1 text-xs">
+                  {agendaErrorSummary.map(({ index, messages }) => (
+                    <li key={index}>
+                      Program {index + 1}: {messages.join(' ')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {agendaFields.fields.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No program items yet. Add one when the event has a detailed schedule.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {agendaFields.fields.map((field, index) => {
+                  const agendaValue = agendaValues[index] || {};
+                  const agendaStartDay = agendaValue.startDay || '';
+
+                  return (
+                    <div key={field.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="mb-4 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-nu-dark">Program {index + 1}</p>
+                        <button
+                          type="button"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-red-700 hover:bg-red-50"
+                          aria-label={`Remove program ${index + 1}`}
+                          title={`Remove program ${index + 1}`}
+                          onClick={() => agendaFields.remove(index)}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field
+                          id={`agenda-${index}-title`}
+                          label="Title"
+                          error={errors.agenda?.[index]?.title?.message}
+                        >
+                          <Input
+                            id={`agenda-${index}-title`}
+                            maxLength={160}
+                            placeholder="Opening remarks"
+                            aria-invalid={Boolean(errors.agenda?.[index]?.title)}
+                            aria-describedby={`agenda-${index}-title-error`}
+                            className={errors.agenda?.[index]?.title ? 'border-red-500' : ''}
+                            {...register(`agenda.${index}.title`)}
+                          />
+                        </Field>
+                        <Field
+                          id={`agenda-${index}-description`}
+                          label="Description"
+                          required={false}
+                          error={errors.agenda?.[index]?.description?.message}
+                          help="Optional · up to 500 characters"
+                        >
+                          <Input
+                            id={`agenda-${index}-description`}
+                            maxLength={500}
+                            placeholder="Optional details"
+                            aria-invalid={Boolean(errors.agenda?.[index]?.description)}
+                            aria-describedby={`agenda-${index}-description-error`}
+                            {...register(`agenda.${index}.description`)}
+                          />
+                        </Field>
+                      </div>
+                      <div className="mt-4 grid gap-6 lg:grid-cols-2">
+                        <div className="space-y-3">
+                          <p className="text-sm font-semibold text-nu-dark">Starts</p>
+                          <Field
+                            id={`agenda-${index}-startDay`}
+                            label="Date"
+                            error={errors.agenda?.[index]?.startDay?.message}
+                          >
+                            <EventDatePicker
+                              id={`agenda-${index}-startDay`}
+                              label={`Program ${index + 1} start date`}
+                              value={agendaStartDay}
+                              minDate={validDay(startDay) ? startDay : undefined}
+                              maxDate={validDay(endDay) ? endDay : undefined}
+                              allowPast={editing}
+                              onChange={(value) => updateAgendaSchedule(index, 'startDay', value)}
+                              invalid={Boolean(errors.agenda?.[index]?.startDay)}
+                              describedBy={`agenda-${index}-startDay-error`}
+                              disabled={isSubmitting}
+                            />
+                          </Field>
+                          <Field
+                            id={`agenda-${index}-startTime`}
+                            label="Time"
+                            error={errors.agenda?.[index]?.startTime?.message}
+                          >
+                            <EventTimePicker
+                              id={`agenda-${index}-startTime`}
+                              label={`Program ${index + 1} start time`}
+                              value={agendaValue.startTime || ''}
+                              {...getAgendaTimeBounds(agendaValue, 'start')}
+                              onChange={(value) => updateAgendaSchedule(index, 'startTime', value)}
+                              invalid={Boolean(errors.agenda?.[index]?.startTime)}
+                              describedBy={`agenda-${index}-startTime-error`}
+                              disabled={isSubmitting}
+                            />
+                          </Field>
+                        </div>
+                        <div className="space-y-3">
+                          <p className="text-sm font-semibold text-nu-dark">Ends</p>
+                          <Field
+                            id={`agenda-${index}-endDay`}
+                            label="Date"
+                            error={errors.agenda?.[index]?.endDay?.message}
+                          >
+                            <EventDatePicker
+                              id={`agenda-${index}-endDay`}
+                              label={`Program ${index + 1} end date`}
+                              value={agendaValue.endDay || ''}
+                              minDate={laterDay([agendaStartDay, startDay])}
+                              maxDate={validDay(endDay) ? endDay : undefined}
+                              allowPast={editing}
+                              onChange={(value) => updateAgendaSchedule(index, 'endDay', value)}
+                              invalid={Boolean(errors.agenda?.[index]?.endDay)}
+                              describedBy={`agenda-${index}-endDay-error`}
+                              disabled={isSubmitting}
+                            />
+                          </Field>
+                          <Field
+                            id={`agenda-${index}-endTime`}
+                            label="Time"
+                            error={errors.agenda?.[index]?.endTime?.message}
+                          >
+                            <EventTimePicker
+                              id={`agenda-${index}-endTime`}
+                              label={`Program ${index + 1} end time`}
+                              value={agendaValue.endTime || ''}
+                              {...getAgendaTimeBounds(agendaValue, 'end')}
+                              onChange={(value) => updateAgendaSchedule(index, 'endTime', value)}
+                              invalid={Boolean(errors.agenda?.[index]?.endTime)}
+                              describedBy={`agenda-${index}-endTime-error`}
+                              disabled={isSubmitting}
+                            />
+                          </Field>
+                        </div>
+                      </div>
+                      {speakerFields.fields.length > 0 && (
+                        <fieldset className="mt-4">
+                          <legend className="text-xs font-semibold text-slate-600">Speakers</legend>
+                          <div className="mt-2 flex flex-wrap gap-3">
+                            {speakerFields.fields.map((speaker, speakerIndex) => (
+                              <label
+                                key={speaker.id}
+                                className="inline-flex items-center gap-2 text-xs text-slate-600"
+                              >
+                                <input
+                                  type="checkbox"
+                                  value={speakerValues?.[speakerIndex]?.clientKey || ''}
+                                  {...register(`agenda.${index}.speakerKeys`)}
+                                />
+                                {speakerValues?.[speakerIndex]?.name ||
+                                  `Speaker ${speakerIndex + 1}`}
+                              </label>
+                            ))}
+                          </div>
+                          <FormMessage id={`agenda-${index}-speakerKeys-error`}>
+                            {errors.agenda?.[index]?.speakerKeys?.message}
+                          </FormMessage>
+                        </fieldset>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="speakers-heading"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <SectionHeader
+                id="speakers-heading"
+                title="Speakers"
+                description="Add the people students will hear from at this event."
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting || speakerFields.fields.length >= 30}
+                aria-label="Add speaker"
+                title="Add speaker"
+                className="h-11 w-11 shrink-0 p-0"
+                onClick={() =>
+                  speakerFields.append({
+                    clientKey: crypto.randomUUID(),
+                    name: '',
+                    role: '',
+                    photoUrl: '',
+                  })
+                }
+              >
+                <Plus size={17} aria-hidden="true" />
+              </Button>
+            </div>
+            {speakerFields.fields.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No speakers added.
+              </p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {speakerFields.fields.map((field, index) => {
+                  const key = speakerValues?.[index]?.clientKey || field.clientKey;
+                  const name = speakerValues?.[index]?.name || '';
+                  const existingPhoto = event?.speakers?.find(
+                    (speaker) => speaker.clientKey === key,
+                  )?.photoUrl;
+                  const preview = speakerPreviews[key] || existingPhoto;
+                  return (
+                    <div key={field.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          {preview ? (
+                            <img
+                              src={preview}
+                              alt=""
+                              className="h-12 w-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+                              {(name || '?').slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-sm font-semibold text-nu-dark">
+                              Speaker {index + 1}
+                            </p>
+                            <label
+                              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-nu-navy hover:bg-slate-100"
+                              aria-label={preview ? 'Replace speaker photo' : 'Add speaker photo'}
+                              title={preview ? 'Replace speaker photo' : 'Add speaker photo'}
+                            >
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="sr-only"
+                                onChange={(change) =>
+                                  chooseSpeakerImage(key, change.target.files?.[0])
+                                }
+                              />
+                              <ImagePlus size={16} aria-hidden="true" />
+                            </label>
+                            {preview && (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-700 hover:bg-red-50"
+                                aria-label="Remove speaker photo"
+                                title="Remove speaker photo"
+                                onClick={() => removeSpeakerImage(key)}
+                              >
+                                <Trash2 size={15} aria-hidden="true" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-red-700 hover:bg-red-50"
+                          aria-label={`Remove speaker ${index + 1}`}
+                          title={`Remove speaker ${index + 1}`}
+                          onClick={() => removeSpeaker(index)}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        <Input
+                          aria-label={`Speaker ${index + 1} name`}
+                          placeholder="Full name"
+                          {...register(`speakers.${index}.name`)}
+                        />
+                        <Input
+                          aria-label={`Speaker ${index + 1} role`}
+                          placeholder="Role or designation"
+                          {...register(`speakers.${index}.role`)}
+                        />
+                        {errors.speakers?.[index] && (
+                          <p className="text-xs text-red-700">
+                            {errors.speakers[index].name?.message ||
+                              errors.speakers[index].role?.message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="registration-heading"
+          >
+            <SectionHeader
+              id="registration-heading"
+              title="Registration"
+              description="Choose whether students need to reserve a place."
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                id="registrationMode"
+                label="Registration mode"
+                error={errors.registrationMode?.message}
+              >
+                <div className="relative">
+                  <select
+                    id="registrationMode"
+                    className="min-h-11 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-10 text-sm"
+                    disabled={isSubmitting}
+                    {...register('registrationMode')}
+                  >
+                    <option value="none">No registration</option>
+                    <option value="required">Registration required</option>
+                  </select>
+                  <ChevronDown
+                    size={17}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
+                </div>
+              </Field>
+              {registrationMode === 'required' && (
+                <Field
+                  id="capacity"
+                  label="Capacity (optional)"
+                  error={errors.capacity?.message}
+                  help="Leave blank for unlimited registration."
+                >
+                  <Input
+                    id="capacity"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    inputMode="numeric"
+                    placeholder="e.g. 100"
+                    aria-invalid={Boolean(errors.capacity)}
+                    {...register('capacity')}
+                  />
+                </Field>
+              )}
+            </div>
+            {registrationMode === 'required' && (
+              <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                Registration closes when the event starts. Students may cancel before then; when
+                capacity is full, new registrations enter a waitlist.
+              </p>
+            )}
+          </section>
+
+          <section
+            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            aria-labelledby="guidance-heading"
+          >
+            <SectionHeader
+              id="guidance-heading"
+              title="Requirements and reminders"
+              description="Give students practical information before they attend."
+            />
+            <div className="grid gap-6 sm:grid-cols-2">
+              {[
+                [
+                  'requirements',
+                  'Requirements',
+                  requirementFields,
+                  'What students need to bring or complete',
+                ],
+                ['reminders', 'Reminders', reminderFields, 'Arrival, dress, or preparation notes'],
+              ].map(([name, label, fields, placeholder]) => (
+                <div key={name}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-nu-dark">{label}</h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-9 w-9 p-0"
+                      disabled={isSubmitting || fields.fields.length >= 20}
+                      aria-label={`Add ${label.toLowerCase().slice(0, -1)}`}
+                      title={`Add ${label.toLowerCase().slice(0, -1)}`}
+                      onClick={() => fields.append({ value: '' })}
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                    </Button>
+                  </div>
+                  {fields.fields.length === 0 ? (
+                    <p className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                      None added.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {fields.fields.map((field, index) => (
+                        <div key={field.id} className="flex gap-2">
+                          <Input
+                            maxLength={240}
+                            placeholder={placeholder}
+                            {...register(`${name}.${index}.value`)}
+                          />
+                          <button
+                            type="button"
+                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-red-700 hover:bg-red-50"
+                            aria-label={`Remove ${label.toLowerCase()} item ${index + 1}`}
+                            title={`Remove ${label.toLowerCase()} item ${index + 1}`}
+                            onClick={() => fields.remove(index)}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </section>
 

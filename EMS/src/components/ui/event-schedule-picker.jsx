@@ -11,6 +11,23 @@ const SELECT_CLASSES =
 
 const pad = (value) => String(value).padStart(2, '0');
 
+const timeToMinutes = (value) => {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value || '')) return null;
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
+};
+
+const isTimeAllowed = (value, minTime, maxTime, minTimeExclusive = false) => {
+  const minutes = timeToMinutes(value);
+  if (minutes === null) return false;
+  const minimum = timeToMinutes(minTime);
+  const maximum = timeToMinutes(maxTime);
+  return (
+    (minimum === null || (minTimeExclusive ? minutes > minimum : minutes >= minimum)) &&
+    (maximum === null || minutes <= maximum)
+  );
+};
+
 const getTimeParts = (value) => {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
     return { hour: '', minute: '', period: '' };
@@ -24,7 +41,16 @@ const getTimeParts = (value) => {
   };
 };
 
-const TimeSelect = ({ id, label, value, options, onValueChange, disabled, invalid }) => (
+const TimeSelect = ({
+  id,
+  label,
+  value,
+  options,
+  onValueChange,
+  disabled,
+  invalid,
+  disabledOptions = [],
+}) => (
   <Select.Root value={value} onValueChange={onValueChange} disabled={disabled}>
     <Select.Trigger
       id={id}
@@ -48,7 +74,8 @@ const TimeSelect = ({ id, label, value, options, onValueChange, disabled, invali
             <Select.Item
               key={option}
               value={option}
-              className="relative flex min-h-9 cursor-pointer items-center rounded-md px-3 pr-8 text-sm text-nu-dark outline-none data-[highlighted]:bg-slate-100 data-[state=checked]:font-semibold"
+              disabled={disabledOptions.includes(option)}
+              className="relative flex min-h-9 cursor-pointer items-center rounded-md px-3 pr-8 text-sm text-nu-dark outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-slate-100 data-[state=checked]:font-semibold"
             >
               <Select.ItemText>{option}</Select.ItemText>
               <Select.ItemIndicator className="absolute right-2">
@@ -71,11 +98,13 @@ export const EventDatePicker = ({
   invalid,
   describedBy,
   minDate,
+  maxDate,
   allowPast = false,
 }) => {
   const [open, setOpen] = useState(false);
   const selected = value ? new Date(`${value}T12:00:00`) : undefined;
   const earliestDay = [allowPast ? null : getCampusToday(), minDate].filter(Boolean).sort().at(-1);
+  const latestDay = maxDate || undefined;
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -107,13 +136,21 @@ export const EventDatePicker = ({
             mode="single"
             selected={selected}
             defaultMonth={selected}
-            disabled={earliestDay ? { before: new Date(`${earliestDay}T12:00:00`) } : undefined}
+            disabled={
+              earliestDay || latestDay
+                ? {
+                    ...(earliestDay ? { before: new Date(`${earliestDay}T12:00:00`) } : {}),
+                    ...(latestDay ? { after: new Date(`${latestDay}T12:00:00`) } : {}),
+                  }
+                : undefined
+            }
             onSelect={(date) => {
               if (date) {
                 const chosenDay = format(date, 'yyyy-MM-dd');
                 if (
                   (!allowPast && chosenDay < getCampusToday()) ||
-                  (minDate && chosenDay < minDate)
+                  (minDate && chosenDay < minDate) ||
+                  (maxDate && chosenDay > maxDate)
                 )
                   return;
                 onChange(chosenDay);
@@ -153,8 +190,59 @@ export const EventDatePicker = ({
   );
 };
 
-export const EventTimePicker = ({ id, label, value, onChange, disabled, invalid, describedBy }) => {
+export const EventTimePicker = ({
+  id,
+  label,
+  value,
+  onChange,
+  disabled,
+  invalid,
+  describedBy,
+  minTime,
+  maxTime,
+  minTimeExclusive = false,
+}) => {
   const { hour, minute, period } = getTimeParts(value);
+
+  const hourOptions = Array.from({ length: 12 }, (_, index) => pad(index + 1));
+  const minuteOptions = Array.from({ length: 60 }, (_, index) => pad(index));
+  const periodOptions = ['AM', 'PM'];
+
+  const disabledHours = hourOptions.filter(
+    (option) =>
+      !periodOptions.some((optionPeriod) =>
+        minuteOptions.some((optionMinute) =>
+          isTimeAllowed(
+            `${pad((Number(option) % 12) + (optionPeriod === 'PM' ? 12 : 0))}:${optionMinute}`,
+            minTime,
+            maxTime,
+            minTimeExclusive,
+          ),
+        ),
+      ),
+  );
+  const disabledMinutes = minuteOptions.filter(
+    (option) =>
+      hour &&
+      period &&
+      !isTimeAllowed(
+        `${pad((Number(hour) % 12) + (period === 'PM' ? 12 : 0))}:${option}`,
+        minTime,
+        maxTime,
+        minTimeExclusive,
+      ),
+  );
+  const disabledPeriods = periodOptions.filter(
+    (option) =>
+      hour &&
+      minute &&
+      !isTimeAllowed(
+        `${pad((Number(hour) % 12) + (option === 'PM' ? 12 : 0))}:${minute}`,
+        minTime,
+        maxTime,
+        minTimeExclusive,
+      ),
+  );
 
   const updatePart = (part, nextValue) => {
     const nextHour = part === 'hour' ? nextValue : hour || '09';
@@ -175,7 +263,8 @@ export const EventTimePicker = ({ id, label, value, onChange, disabled, invalid,
         id={id}
         label="Hour"
         value={hour}
-        options={Array.from({ length: 12 }, (_, index) => pad(index + 1))}
+        options={hourOptions}
+        disabledOptions={disabledHours}
         onValueChange={(next) => updatePart('hour', next)}
         disabled={disabled}
         invalid={invalid}
@@ -183,7 +272,8 @@ export const EventTimePicker = ({ id, label, value, onChange, disabled, invalid,
       <TimeSelect
         label="Minute"
         value={minute}
-        options={Array.from({ length: 60 }, (_, index) => pad(index))}
+        options={minuteOptions}
+        disabledOptions={disabledMinutes}
         onValueChange={(next) => updatePart('minute', next)}
         disabled={disabled}
         invalid={invalid}
@@ -191,7 +281,8 @@ export const EventTimePicker = ({ id, label, value, onChange, disabled, invalid,
       <TimeSelect
         label="AM or PM"
         value={period}
-        options={['AM', 'PM']}
+        options={periodOptions}
+        disabledOptions={disabledPeriods}
         onValueChange={(next) => updatePart('period', next)}
         disabled={disabled}
         invalid={invalid}

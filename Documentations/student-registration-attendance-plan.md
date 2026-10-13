@@ -6,7 +6,7 @@
 
 ## Goal
 
-Replace the current one-click registration flow with a short event-specific form. A student becomes registered or waitlisted only after submitting valid answers.
+Replace the current one-click registration flow with a short event-specific form. A student becomes registered only after submitting valid answers while capacity is available.
 
 Attendance will remain intentionally simple: an admin displays a signed event QR code, a signed-in student scans it, and the system records an immutable time-in followed by an immutable time-out on the next valid scan.
 
@@ -14,7 +14,7 @@ Attendance will remain intentionally simple: an admin displays a signed event QR
 
 - Events with **No registration** are open events. They do not show a registration form and do not collect attendance scans.
 - Events with **Registration required** show a form before registration is created.
-- A valid form submission immediately creates either a `registered` or `waitlisted` registration. There is no admin approval queue in this phase.
+- A valid form submission creates a `registered` registration when capacity is available. Full events reject new submissions until a registered student cancels; there is no waitlist or admin approval queue.
 - Student identity is taken from the authenticated account. Students do not type or edit their name, student ID, or email in the form.
 - Admins can view submitted answers and export a print-friendly attendee list.
 - Registration cancellation remains available before the event starts. A cancelled student must submit the form again to register again.
@@ -46,7 +46,7 @@ Answerable items can be marked required or optional. Instruction-only blocks nev
 5. The student submits the form once.
 6. The backend validates the current form, event state, registration window, and capacity.
 7. The backend creates the registration only after validation succeeds.
-8. The student is shown either a registered or waitlisted confirmation and can view the saved response from My Events.
+8. The student is shown a registered confirmation or a full-capacity message and can view the saved response from My Events.
 
 If a submission fails validation, no registration record is created. A duplicate active submission returns the existing registration state instead of creating another record.
 
@@ -183,7 +183,7 @@ The attendance record contains:
 - Immutable `timeIn`
 - Optional `timeOut`
 
-The existing unique event/student index remains. The server rejects wrong-event QR codes, expired tokens, invalid signatures, duplicate completed scans, unregistered students, waitlisted students, cancelled students, archived events, and open events.
+The existing unique event/student index remains. The server rejects wrong-event QR codes, expired tokens, invalid signatures, duplicate completed scans, unregistered students, cancelled students, archived events, and open events.
 
 ## Frontend work
 
@@ -209,7 +209,7 @@ Update the registration panel to show:
 
 - Open event when no registration is required
 - Complete registration before submission
-- Registered or waitlisted state after submission
+- Registered or cancelled state after submission
 - Capacity information
 - View or update submitted answers where allowed
 - Cancellation before the event starts
@@ -218,11 +218,11 @@ Do not show attendance controls on open events.
 
 ### My Events
 
-Show registered, waitlisted, and cancelled events with:
+Show registered and cancelled events with:
 
 - Registration status
 - Form submission time
-- Capacity or waitlist messaging
+- Capacity-full messaging
 - Time-in status
 - Time-out status
 - Attendance completion state
@@ -255,13 +255,13 @@ Show registration totals, answer submissions, export/print actions, QR controls,
 - Maximum item count
 - No registration record on invalid submission
 - Duplicate submission behavior
-- Capacity and waitlist behavior
+- Capacity rejection and reopening after cancellation
 - Cancel and re-register behavior
 - Legacy events with empty forms
 - Student/admin authorization
 - Registration response export
 - Open-event attendance rejection
-- Registered, waitlisted, and cancelled attendance rejection
+- Registered and cancelled attendance rejection
 - QR signature, expiry, and event matching
 - Time-in and time-out window boundaries
 - Immutable time-in and time-out behavior
@@ -273,7 +273,7 @@ Show registration totals, answer submissions, export/print actions, QR controls,
 - Form loading, empty, validation, and server-error states
 - All supported question controls
 - Locked student identity display
-- Registration and waitlist confirmations
+- Registration confirmations and full-capacity messages
 - Cancellation state
 - My Events attendance state
 - Admin form builder and preview

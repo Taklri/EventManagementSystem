@@ -187,7 +187,9 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                 {capacityState.capacity && (
                   <p className="mt-1 text-xs text-slate-500">
                     {capacityState.registeredCount} of {capacityState.capacity} places filled
-                    {capacityState.isFull ? ' · new registrations join the waitlist' : ''}.
+                    {capacityState.isFull
+                      ? ' · registration is full and will reopen if someone cancels'
+                      : ''}.
                   </p>
                 )}
                 {registration?.status === 'registered' && (
@@ -204,14 +206,14 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                   </p>
                 )}
                 {!registration || registration.status === 'cancelled' ? (
-                  event.isArchived || event.status !== 'Coming Soon' ? (
+                  event.isArchived || event.status !== 'Coming Soon' || capacityState.isFull ? (
                     <Button type="button" className="mt-4 w-full" disabled>
-                      Registration closed
+                      {capacityState.isFull ? 'Registration full' : 'Registration closed'}
                     </Button>
                   ) : (
                     <Button asChild className="mt-4 w-full">
                       <Link to={`/events/${id}/register`}>
-                        {capacityState.isFull ? 'Complete form to join waitlist' : 'Complete registration'}
+                        Complete registration
                       </Link>
                     </Button>
                   )

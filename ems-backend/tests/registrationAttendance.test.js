@@ -84,10 +84,11 @@ test("event creation accepts a form and rejects questions on open events", async
   assert.equal(Event.create.mock.calls[0].arguments[0].registrationForm.items[0].key, "course");
 });
 
-test("registration persists only after valid form submission and assigns waitlist status", async () => {
+test("registration closes at capacity and reopens when a cancellation frees a slot", async () => {
   mock.method(Event, "findById", async () => ({ ...event(), capacity: 1 }));
   mock.method(EventRegistration, "findOne", async () => null);
-  mock.method(EventRegistration, "countDocuments", async () => 1);
+  let registeredCount = 1;
+  mock.method(EventRegistration, "countDocuments", async () => registeredCount);
   mock.method(EventRegistration.prototype, "save", async function save() { return this; });
   const req = { params: { id: eventId }, user: { sub: studentId }, body: { answers: [] } };
   const invalid = response();
@@ -96,11 +97,18 @@ test("registration persists only after valid form submission and assigns waitlis
   assert.equal(EventRegistration.prototype.save.mock.callCount(), 0);
 
   req.body.answers = [{ key: "course", value: "Engineering" }, { key: "session", value: "Morning" }];
-  const valid = response();
-  await registerForEvent(req, valid);
-  assert.equal(valid.statusCode, 201);
-  assert.equal(valid.body.registration.status, "waitlisted");
-  assert.equal(valid.body.registration.answers[0].value, "Engineering");
+  const full = response();
+  await registerForEvent(req, full);
+  assert.equal(full.statusCode, 409);
+  assert.match(full.body.message, /registration will reopen/i);
+  assert.equal(EventRegistration.prototype.save.mock.callCount(), 0);
+
+  registeredCount = 0;
+  const reopened = response();
+  await registerForEvent(req, reopened);
+  assert.equal(reopened.statusCode, 201);
+  assert.equal(reopened.body.registration.status, "registered");
+  assert.equal(reopened.body.registration.answers[0].value, "Engineering");
   assert.equal(EventRegistration.prototype.save.mock.callCount(), 1);
 });
 

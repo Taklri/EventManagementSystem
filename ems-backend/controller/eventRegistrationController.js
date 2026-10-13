@@ -86,10 +86,17 @@ export const getRegistrationForm = async (req, res) => {
       event: event._id,
       student: student._id,
     });
+    const registeredCount = await EventRegistration.countDocuments({
+      event: event._id,
+      status: "registered",
+    });
     const form = await resolveEventRegistrationForm(event);
     return res.status(200).json({
       event: withStatus(event),
       form,
+      capacity: event.capacity || null,
+      registeredCount,
+      isFull: Boolean(event.capacity && registeredCount >= event.capacity),
       // Kept as read-only metadata for existing clients; these are never form fields or client input.
       identity: {
         name: [student.firstName, student.middleName, student.lastName]
@@ -119,12 +126,13 @@ export const registerForEvent = async (req, res) => {
       event: event._id,
       student: req.user.sub,
     });
-    if (registration && registration.status !== "cancelled") {
+    if (
+      registration &&
+      registration.status !== "cancelled" &&
+      registration.status !== "waitlisted"
+    ) {
       return res.status(200).json({
-        message:
-          registration.status === "waitlisted"
-            ? "You are already on the waitlist"
-            : "You are already registered",
+        message: "You are already registered",
         registration: registrationPayload(registration),
       });
     }
@@ -143,10 +151,12 @@ export const registerForEvent = async (req, res) => {
       event: event._id,
       status: "registered",
     });
-    const status =
-      event.capacity && registeredCount >= event.capacity
-        ? "waitlisted"
-        : "registered";
+    if (event.capacity && registeredCount >= event.capacity) {
+      return res.status(409).json({
+        message: "This event is full. Registration will reopen if a registered student cancels.",
+      });
+    }
+    const status = "registered";
     if (!registration) {
       registration = new EventRegistration({
         event: event._id,
@@ -164,31 +174,22 @@ export const registerForEvent = async (req, res) => {
     await registration.save();
     await notifyStudent({
       user: req.user.sub,
-      type: status === "waitlisted" ? "waitlisted" : "registered",
-      title: status === "waitlisted" ? "Waitlist" : "Registration confirmed",
-      message:
-        status === "waitlisted"
-          ? `You were added to the waitlist for ${event.title}.`
-          : `You are registered for ${event.title}.`,
+      type: "registered",
+      title: "Registration confirmed",
+      message: `You are registered for ${event.title}.`,
       event: event._id,
     });
     const actor = await studentActor(req.user.sub);
     await notifyAllAdmins({
-      type: status === "waitlisted" ? "waitlisted" : "registered",
-      title: status === "waitlisted" ? "Waitlist" : "New registration",
-      message:
-        status === "waitlisted"
-          ? `${actor.actorName || "A student"} joined the waitlist for ${event.title}.`
-          : `${actor.actorName || "A student"} registered for ${event.title}.`,
+      type: "registered",
+      title: "New registration",
+      message: `${actor.actorName || "A student"} registered for ${event.title}.`,
       event: event._id,
       ...actor,
     });
 
     return res.status(201).json({
-      message:
-        status === "waitlisted"
-          ? "You have been added to the waitlist"
-          : "You are registered for this event",
+      message: "You are registered for this event",
       registration: registrationPayload(registration),
     });
   } catch (error) {

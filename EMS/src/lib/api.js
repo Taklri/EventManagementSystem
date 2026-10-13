@@ -102,12 +102,18 @@ export const eventsApi = {
   cancelRegistration: (id, token) =>
     apiRequest(`/events/${encodeURIComponent(id)}/registration`, { method: 'DELETE', token }),
   myRegistrations: (token) => apiRequest('/events/my-registrations', { token }),
-  recordAttendance: (id, token, attendanceToken) =>
-    apiRequest(`/events/${encodeURIComponent(id)}/attendance`, {
+  attendance: (id, token) =>
+    apiRequest(`/events/${encodeURIComponent(id)}/attendance`, { token }),
+  recordAttendance: (id, token, photo) => {
+    const body = new FormData();
+    body.append('photo', photo);
+    return apiRequest(`/events/${encodeURIComponent(id)}/attendance`, {
       method: 'POST',
-      body: { token: attendanceToken },
+      body,
       token,
-    }),
+      timeoutMs: 45000,
+    });
+  },
   previewAttendance: (id, token, attendanceToken) =>
     apiRequest(`/events/${encodeURIComponent(id)}/attendance/preview`, {
       method: 'POST',
@@ -166,9 +172,9 @@ export const adminApi = {
     apiRequest(`/events/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH', token }),
   registrationSummary: (id, token) =>
     apiRequest(`/admin/events/${encodeURIComponent(id)}/registrations`, { token }),
-  registrations: (id, { page = 1, limit = 20, status = 'all' }, token) =>
+  registrations: (id, { page = 1, limit = 20, status = 'all', search = '' }, token) =>
     apiRequest(
-      `/admin/events/${encodeURIComponent(id)}/registrations?${new URLSearchParams({ page: String(page), limit: String(limit), status })}`,
+      `/admin/events/${encodeURIComponent(id)}/registrations?${new URLSearchParams({ page: String(page), limit: String(limit), status, search })}`,
       { token },
     ),
   downloadRegistrations: async (id, token) => {

@@ -233,6 +233,10 @@ export const getEventRegistration = async (req, res) => {
       event: req.params.id,
       student: req.user.sub,
     });
+    const attendance = await EventAttendance.findOne({
+      event: req.params.id,
+      student: req.user.sub,
+    }).select("timeIn timeOut timeInPhotoUrl timeOutPhotoUrl");
     const registeredCount =
       event.registrationMode === "required"
         ? await EventRegistration.countDocuments({
@@ -245,6 +249,14 @@ export const getEventRegistration = async (req, res) => {
       capacity: event.capacity || null,
       registeredCount,
       isFull: Boolean(event.capacity && registeredCount >= event.capacity),
+      attendance: attendance
+        ? {
+            timeIn: attendance.timeIn,
+            timeOut: attendance.timeOut || null,
+            timeInPhotoUrl: attendance.timeInPhotoUrl || null,
+            timeOutPhotoUrl: attendance.timeOutPhotoUrl || null,
+          }
+        : null,
     });
   } catch (error) {
     console.error(error);
@@ -318,21 +330,43 @@ export const getAdminRegistrationSummary = async (req, res) => {
     const page = Number(req.query.page || 1);
     const limit = Number(req.query.limit || 20);
     const status = req.query.status || "all";
+    const search =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
     if (
       !Number.isSafeInteger(page) ||
       page < 1 ||
       !Number.isSafeInteger(limit) ||
       limit < 1 ||
       limit > 100 ||
-      !["all", "registered", "waitlisted", "cancelled"].includes(status)
+      !["all", "registered", "waitlisted", "cancelled"].includes(status) ||
+      search.length > 100
     ) {
       return res
         .status(400)
         .json({ message: "Invalid registration list filters" });
     }
+    let matchingStudentIds;
+    if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchPattern = new RegExp(escapedSearch, "i");
+      const matchingStudents = await User.find({
+        $or: [
+          { studentId: searchPattern },
+          { firstName: searchPattern },
+          { middleName: searchPattern },
+          { lastName: searchPattern },
+          { program: searchPattern },
+          { yearLevel: searchPattern },
+        ],
+      })
+        .select("_id")
+        .lean();
+      matchingStudentIds = matchingStudents.map((student) => student._id);
+    }
     const filter = {
       event: event._id,
       ...(status === "all" ? {} : { status }),
+      ...(matchingStudentIds ? { student: { $in: matchingStudentIds } } : {}),
     };
     const [total, rows] = await Promise.all([
       EventRegistration.countDocuments(filter),
@@ -340,12 +374,15 @@ export const getAdminRegistrationSummary = async (req, res) => {
         .sort({ submittedAt: 1, createdAt: 1, _id: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .populate("student", "firstName middleName lastName studentId email"),
+        .populate(
+          "student",
+          "firstName middleName lastName studentId email program yearLevel",
+        ),
     ]);
     const attendanceRows = await EventAttendance.find({
       event: event._id,
       student: { $in: rows.map((row) => row.student?._id).filter(Boolean) },
-    }).select("student timeIn timeOut");
+    }).select("student timeIn timeOut timeInPhotoUrl timeOutPhotoUrl");
     const attendanceByStudent = new Map(
       attendanceRows.map((row) => [String(row.student), row]),
     );
@@ -371,6 +408,8 @@ export const getAdminRegistrationSummary = async (req, res) => {
                 .join(" "),
               studentId: row.student.studentId,
               email: row.student.email,
+              program: row.student.program,
+              yearLevel: row.student.yearLevel,
             }
           : null,
         attendance: attendanceByStudent.get(String(row.student?._id)) || null,

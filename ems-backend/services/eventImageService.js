@@ -13,9 +13,8 @@ const cloudinaryConfig = () => {
   });
 };
 
-export const uploadEventImage = async (buffer) => {
+const uploadImage = async (buffer, folder) => {
   cloudinaryConfig();
-  const folder = process.env.CLOUDINARY_FOLDER?.trim() || "ems/events";
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { folder, resource_type: "image" },
@@ -28,6 +27,15 @@ export const uploadEventImage = async (buffer) => {
     stream.end(buffer);
   });
 };
+
+export const uploadEventImage = async (buffer) =>
+  uploadImage(buffer, process.env.CLOUDINARY_FOLDER?.trim() || "ems/events");
+
+export const uploadAttendancePhoto = async (buffer) =>
+  uploadImage(
+    buffer,
+    process.env.CLOUDINARY_ATTENDANCE_FOLDER?.trim() || "ems/attendance",
+  );
 
 export const removeEventImage = async (publicId) => {
   cloudinaryConfig();

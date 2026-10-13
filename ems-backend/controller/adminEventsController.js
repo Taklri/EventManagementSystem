@@ -47,7 +47,7 @@ export const getAdminEvents = async (req, res) => {
     const [total, events] = await Promise.all([
       Event.countDocuments(filter),
       Event.find(filter)
-        .sort({ startDate: -1, _id: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('organizer', 'firstName middleName lastName'),

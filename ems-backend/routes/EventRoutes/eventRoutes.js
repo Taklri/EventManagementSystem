@@ -11,6 +11,7 @@ import {
 import { authenticate } from "../../middleware/auth.js";
 import { authorizeRoles } from "../../middleware/authorize.js";
 import { eventImageUpload } from "../../middleware/eventImageUpload.js";
+import { attendancePhotoUpload } from "../../middleware/attendancePhotoUpload.js";
 import {
   cancelEventRegistration,
   getEventRegistration,
@@ -18,7 +19,11 @@ import {
   getMyEventRegistrations,
   registerForEvent,
 } from "../../controller/eventRegistrationController.js";
-import { previewAttendance, recordAttendance } from "../../controller/eventAttendanceController.js";
+import {
+  getStudentAttendance,
+  previewAttendance,
+  recordAttendance,
+} from "../../controller/eventAttendanceController.js";
 
 const router = express.Router();
 
@@ -30,7 +35,14 @@ router.get("/:id/registration", authenticate, authorizeRoles("student"), getEven
 router.get("/:id/registration/form", authenticate, authorizeRoles("student"), getRegistrationForm);
 router.post("/:id/registration", authenticate, authorizeRoles("student"), registerForEvent);
 router.delete("/:id/registration", authenticate, authorizeRoles("student"), cancelEventRegistration);
-router.post("/:id/attendance", authenticate, authorizeRoles("student"), recordAttendance);
+router.get("/:id/attendance", authenticate, authorizeRoles("student"), getStudentAttendance);
+router.post(
+  "/:id/attendance",
+  authenticate,
+  authorizeRoles("student"),
+  attendancePhotoUpload,
+  recordAttendance,
+);
 router.post("/:id/attendance/preview", authenticate, authorizeRoles("student"), previewAttendance);
 router.get("/:id", authenticate, authorizeRoles("student", "admin"), getEventById);
 router.put("/:id", authenticate, authorizeRoles("admin"), eventImageUpload, updateEvent);

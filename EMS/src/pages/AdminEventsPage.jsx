@@ -15,7 +15,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useAuth } from '../context/AuthContext';
 import { adminApi } from '../lib/api';
-import { formatEventSchedule, organizerName } from '../lib/eventFormatting';
+import { formatEventDate, organizerName } from '../lib/eventFormatting';
 
 const FILTERS = [
   { value: 'all', label: 'All events' },
@@ -30,6 +30,28 @@ const ArchivedStatus = () => (
     Archived
   </span>
 );
+
+const formatEventTime = (value) =>
+  new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
+
+const EventDateTimeCell = ({ event }) => {
+  const startDate = formatEventDate(event.startDate);
+  const endDate = formatEventDate(event.endDate);
+  const dateLabel = startDate === endDate ? startDate : `${startDate} – ${endDate}`;
+
+  return (
+    <div className="space-y-0.5">
+      <p className="font-medium text-slate-700">{dateLabel}</p>
+      <p className="text-xs text-slate-500">
+        {formatEventTime(event.startDate)} – {formatEventTime(event.endDate)}
+      </p>
+    </div>
+  );
+};
 
 const AdminEventsPage = () => {
   const { accessToken } = useAuth();
@@ -238,7 +260,7 @@ const AdminEventsPage = () => {
                         </span>
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap', color: '#475569' }}>
-                        {formatEventSchedule(event.startDate, event.endDate)}
+                        <EventDateTimeCell event={event} />
                       </TableCell>
                       <TableCell sx={{ maxWidth: 190 }}>
                         <span className="break-words">{event.location}</span>

@@ -36,7 +36,7 @@ test('admin list includes archived events by default and paginates newest first'
   assert.equal(res.statusCode, 200);
   assert.deepEqual(calls.countFilter, {});
   assert.deepEqual(calls.findFilter, {});
-  assert.deepEqual(calls.sort, { startDate: -1, _id: -1 });
+  assert.deepEqual(calls.sort, { createdAt: -1, _id: -1 });
   assert.equal(calls.skip, 10);
   assert.equal(calls.limit, 10);
   assert.deepEqual(res.body.pagination, {

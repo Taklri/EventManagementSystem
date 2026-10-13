@@ -135,6 +135,25 @@ const eventSchema = new mongoose.Schema(
       default: "none",
       required: true,
     },
+    registrationForm: {
+      version: { type: Number, default: 1, min: 1 },
+      items: {
+        type: [{
+          key: { type: String, required: true },
+          type: { type: String, required: true },
+          label: { type: String, required: true },
+          helpText: { type: String, default: "" },
+          required: { type: Boolean, default: false },
+          options: { type: [String], default: [] },
+        }],
+        default: [],
+      },
+    },
+    registrationFormId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RegistrationForm",
+      default: null,
+    },
     capacity: {
       type: Number,
       min: [1, "Capacity must be at least 1"],

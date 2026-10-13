@@ -39,36 +39,57 @@ const SectionHeading = ({ id, children, action }) => (
   </div>
 );
 
-const AgendaTimeline = ({ agenda }) => (
-  <div className="relative mt-5 space-y-5 before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-px before:bg-slate-200">
-    {agenda
-      .slice()
-      .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
-      .map((item, index) => (
-        <div key={item._id || `${item.title}-${index}`} className="relative flex gap-4">
-          <span className="relative z-10 mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-[3px] border-white bg-nu-navy shadow-[0_0_0_1px_#d8deea]" />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-nu-navy">
-              {formatAgendaTime(item.startDate, item.endDate)}
-            </p>
-            <p className="mt-1 text-sm font-semibold text-nu-dark [overflow-wrap:anywhere]">
-              {item.title}
-            </p>
-            {item.description && (
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 [overflow-wrap:anywhere]">
-                {item.description}
-              </p>
-            )}
-            {item.speakerKeys?.length > 0 && (
-              <p className="mt-2 text-xs text-slate-500">
-                {item.speakerKeys.length} assigned speaker{item.speakerKeys.length === 1 ? '' : 's'}
-              </p>
-            )}
-          </div>
-        </div>
-      ))}
-  </div>
-);
+const AgendaTimeline = ({ agenda, speakers }) => {
+  const speakerNames = new Map(
+    (speakers || [])
+      .filter((speaker) => speaker.clientKey && speaker.name)
+      .map((speaker) => [speaker.clientKey, speaker.name]),
+  );
+
+  return (
+    <div className="relative mt-5 space-y-5 before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-px before:bg-slate-200">
+      {agenda
+        .slice()
+        .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
+        .map((item, index) => {
+          const assignedNames = (item.speakerKeys || [])
+            .map((key) => speakerNames.get(key))
+            .filter(Boolean);
+
+          return (
+            <div key={item._id || `${item.title}-${index}`} className="relative flex gap-4">
+              <span className="relative z-10 mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-[3px] border-white bg-nu-navy shadow-[0_0_0_1px_#d8deea]" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-nu-navy">
+                  {formatAgendaTime(item.startDate, item.endDate)}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-nu-dark [overflow-wrap:anywhere]">
+                  {item.title}
+                </p>
+                {item.description && (
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 [overflow-wrap:anywhere]">
+                    {item.description}
+                  </p>
+                )}
+                {assignedNames.length > 0 ? (
+                  <p className="mt-2 text-xs text-slate-500 [overflow-wrap:anywhere]">
+                    With {assignedNames.join(', ')}
+                  </p>
+                ) : (
+                  item.speakerKeys?.length > 0 && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      {item.speakerKeys.length} assigned speaker
+                      {item.speakerKeys.length === 1 ? '' : 's'}
+                    </p>
+                  )
+                )}
+              </div>
+            </div>
+          );
+        })}
+    </div>
+  );
+};
 
 const Speakers = ({ speakers }) => (
   <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-5">
@@ -221,7 +242,7 @@ export const EventDetailsBody = ({ event }) => (
         {formatEventSchedule(event.startDate, event.endDate)} · Philippine Standard Time
       </p>
       {event.agenda?.length > 0 ? (
-        <AgendaTimeline agenda={event.agenda} />
+        <AgendaTimeline agenda={event.agenda} speakers={event.speakers} />
       ) : (
         <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-xs text-slate-500">
           No program items have been added for this event.

@@ -17,6 +17,7 @@ const student = {
   yearLevel: '1st Year',
   program: 'Bachelor of Science in Computer Science',
   email: 'test@example.com',
+  imageUrl: 'https://res.cloudinary.com/test/student.png',
   password: 'never-return',
 };
 const body = { studentId: student.studentId, firstName: 'Updated', middleName: '', lastName: 'Student' };
@@ -38,6 +39,7 @@ test('list selects students and safe fields and counts only registered records',
   assert.equal(res.body.users[0].middleName, '');
   assert.equal(res.body.users[0].yearLevel, student.yearLevel);
   assert.equal(res.body.users[0].program, student.program);
+  assert.equal(res.body.users[0].imageUrl, student.imageUrl);
 });
 
 test('updates only student targets and accepts an empty middle name', async () => {

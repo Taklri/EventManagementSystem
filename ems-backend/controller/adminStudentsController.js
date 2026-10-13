@@ -3,12 +3,12 @@ import User from '../models/User.js';
 import EventRegistration from '../models/EventRegistration.js';
 import { programValidationError, yearLevelValidationError } from '../utils/authValidation.js';
 
-const fields = '_id studentId firstName middleName lastName yearLevel program email';
+const fields = '_id studentId firstName middleName lastName yearLevel program email imageUrl';
 const displayStudent = (user, eventsJoined = 0) => ({
   id: String(user._id), studentId: user.studentId,
   firstName: user.firstName, middleName: user.middleName || '',
   lastName: user.lastName, yearLevel: user.yearLevel || '', program: user.program || '',
-  email: user.email, eventsJoined,
+  email: user.email, imageUrl: user.imageUrl || null, eventsJoined,
 });
 
 const registrationCounts = (ids) => EventRegistration.aggregate([

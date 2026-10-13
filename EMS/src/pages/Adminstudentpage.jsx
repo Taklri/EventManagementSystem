@@ -46,6 +46,27 @@ function getInitials(student) {
   return (student.firstName.charAt(0) + student.lastName.charAt(0)).toUpperCase();
 }
 
+function StudentAvatar({ student, className = 'h-9 w-9', textClass = 'text-xs' }) {
+  if (student.imageUrl) {
+    return (
+      <img
+        src={student.imageUrl}
+        alt={`${getFullName(student)} profile photo`}
+        className={`${className} shrink-0 rounded-full object-cover`}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`${className} ${textClass} shrink-0 flex items-center justify-center rounded-full font-semibold ${AVATAR_COLORS[parseInt(student.id.slice(-2), 16) % AVATAR_COLORS.length]}`}
+      aria-hidden="true"
+    >
+      {getInitials(student)}
+    </span>
+  );
+}
+
 // the popup box (dark background + white card)
 function Modal({ title, onClose, children }) {
   // press Escape to close
@@ -101,6 +122,9 @@ function ViewStudentModal({ student, onClose }) {
 
   return (
     <Modal title="Student details" onClose={onClose}>
+      <div className="mb-5 flex justify-center">
+        <StudentAvatar student={student} className="h-24 w-24" textClass="text-2xl" />
+      </div>
       <dl className="space-y-3 text-sm">
         {rows.map((row) => (
           <div key={row[0]} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
@@ -515,14 +539,7 @@ function AdminStudentsPage() {
                 <TableRow key={student.id} hover>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <span
-                        className={
-                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ' +
-                          AVATAR_COLORS[parseInt(student.id.slice(-2), 16) % AVATAR_COLORS.length]
-                        }
-                      >
-                        {getInitials(student)}
-                      </span>
+                      <StudentAvatar student={student} />
                       <div className="min-w-0">
                         <p className="font-semibold text-nu-dark">{getFullName(student)}</p>
                         <p className="break-all text-xs text-slate-500">{student.email}</p>

@@ -25,13 +25,11 @@ const userSchema = new mongoose.Schema({
     yearLevel: {
         type: String,
         trim: true,
-        required: true,
         maxlength: 40,
     },
     program: {
         type: String,
         trim: true,
-        required: true,
         enum: PROGRAM_OPTIONS,
     },
     email: {

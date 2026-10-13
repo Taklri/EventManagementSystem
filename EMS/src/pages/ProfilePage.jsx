@@ -409,7 +409,7 @@ export default function ProfilePage() {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
         <div className="flex flex-wrap items-center gap-6">
           {profile.imageUrl ? (
-            <img src={profile.imageUrl} alt="" className="h-40 w-40 rounded-full object-cover" />
+            <img src={profile.imageUrl} alt={`${fullName(profile)} profile photo`} className="h-40 w-40 rounded-full object-cover" />
           ) : (
             <span className="flex h-40 w-40 items-center justify-center rounded-full bg-nu-navy text-4xl font-semibold text-white" aria-hidden="true">{initials}</span>
           )}

@@ -3,7 +3,7 @@
 `/admin/students` loads live student accounts from MongoDB through `GET /api/admin/students`.
 Both list and update routes require a bearer token and the admin role.
 
-- List response: `{ users: [{ id, studentId, firstName, middleName, lastName, yearLevel, program, email, eventsJoined }] }`.
+- List response: `{ users: [{ id, studentId, firstName, middleName, lastName, yearLevel, program, email, imageUrl, eventsJoined }] }`.
 - Only `User` records with role `student` appear, ordered by last name, first name, and ID.
 - `eventsJoined` counts `EventRegistration` records with status `registered`; cancelled and waitlisted records are excluded.
 - Search and pagination currently run in the frontend on the fetched list. Refresh reloads the list and counts.

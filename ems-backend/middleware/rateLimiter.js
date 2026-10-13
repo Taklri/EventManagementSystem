@@ -60,6 +60,46 @@ export const registrationOtpRateLimiter = rateLimit({
     }
 });
 
+export const forgotPasswordRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        message: 'Too many password reset attempts. Please try again later.'
+    }
+});
+
+export const resetOtpRateLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        message: 'Too many password reset OTP attempts. Please try again later.'
+    }
+});
+
+export const resetResendRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 3,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        message: 'Too many password reset OTP resend requests. Please try again later.'
+    }
+});
+
+export const resetPasswordRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        message: 'Too many password reset attempts. Please try again later.'
+    }
+});
+
 export const registrationResendRateLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     limit: 3,

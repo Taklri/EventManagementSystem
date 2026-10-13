@@ -3,9 +3,11 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import AuthProvider from './context/AuthProvider';
 import HomePage from './pages/HomePage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import LoginPage from './pages/LoginPage';
 import OtpPage from './pages/OtpPage';
 import RegisterPage from './pages/RegisterPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import StudentShell from './components/StudentShell';
 import EventDetailsPage from './pages/EventDetailsPage';
 import MyEventsPage from './pages/MyEventsPage';
@@ -68,6 +70,18 @@ const RouteContent = () => {
         element={
           accessToken ? <Navigate to={destination} replace /> : <OtpPage kind="registration" />
         }
+      />
+      <Route
+        path="/forgot-password"
+        element={accessToken ? <Navigate to={destination} replace /> : <ForgotPasswordPage />}
+      />
+      <Route
+        path="/forgot-password/otp"
+        element={accessToken ? <Navigate to={destination} replace /> : <OtpPage kind="reset" />}
+      />
+      <Route
+        path="/forgot-password/new"
+        element={accessToken ? <Navigate to={destination} replace /> : <ResetPasswordPage />}
       />
       <Route
         element={

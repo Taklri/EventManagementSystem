@@ -1,6 +1,13 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import User from '../models/User.js';
 
-export const authenticate = (req, res, next) => {
+export const tokenIssuedBeforePasswordChange = (decoded, user) => {
+    if (!user?.passwordChangedAt || decoded?.iat === undefined) return false;
+    return decoded.iat < Math.floor(new Date(user.passwordChangedAt).getTime() / 1000);
+};
+
+export const authenticate = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
 
@@ -22,6 +29,21 @@ export const authenticate = (req, res, next) => {
             token,
             process.env.JWT_SECRET_KEY
         );
+
+        if (decoded.purpose) {
+            return res.status(401).json({
+                message: 'Invalid or expired token'
+            });
+        }
+
+        if (mongoose.isValidObjectId(decoded.sub)) {
+            const account = await User.findById(decoded.sub);
+            if (!account || tokenIssuedBeforePasswordChange(decoded, account)) {
+                return res.status(401).json({
+                    message: 'Invalid or expired token'
+                });
+            }
+        }
 
         req.user = decoded;
 

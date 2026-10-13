@@ -9,6 +9,7 @@ const RESEND_COOLDOWN_SECONDS = 60;
 
 export default function OtpPage({ kind }) {
   const isLogin = kind === 'login';
+  const isReset = kind === 'reset';
   const location = useLocation();
   const navigate = useNavigate();
   const { signIn } = useAuth();
@@ -23,13 +24,14 @@ export default function OtpPage({ kind }) {
   const inputs = useRef([]);
   const challengeId = location.state?.challengeId;
   const email = location.state?.email;
-  const resend = isLogin ? authApi.resendLoginOtp : authApi.resendRegistrationOtp;
+  const resend = isReset ? authApi.resendResetOtp : isLogin ? authApi.resendLoginOtp : authApi.resendRegistrationOtp;
+  const backTo = isReset ? '/forgot-password' : isLogin ? '/' : '/register';
   const expiresInSeconds = expiresAt ? Math.max(0, Math.ceil((Date.parse(expiresAt) - now) / 1000)) : null;
   const isExpired = expiresInSeconds === 0;
 
   useEffect(() => {
-    if (!challengeId) navigate(isLogin ? '/' : '/register', { replace: true });
-  }, [challengeId, isLogin, navigate]);
+    if (!challengeId) navigate(backTo, { replace: true });
+  }, [backTo, challengeId, navigate]);
 
   useEffect(() => {
     if (secondsLeft <= 0) return undefined;
@@ -76,6 +78,11 @@ export default function OtpPage({ kind }) {
     setError('');
     setNotice('');
     try {
+      if (isReset) {
+        const result = await authApi.verifyResetOtp({ challengeId, otp });
+        navigate('/forgot-password/new', { replace: true, state: { resetToken: result.resetToken, email } });
+        return;
+      }
       const result = await (isLogin ? authApi.verifyLoginOtp : authApi.verifyRegistrationOtp)({ challengeId, otp });
       signIn(result.accesstoken, result.user);
       navigate(result.user?.role === 'admin' ? '/admin' : '/home', { replace: true });
@@ -113,11 +120,11 @@ export default function OtpPage({ kind }) {
 
   return (
     <AuthLayout compact centered>
-      <Link to={isLogin ? '/' : '/register'} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2">
+      <Link to={backTo} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2">
         <ArrowLeft className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden="true" />
         Back
       </Link>
-      <h2 className="mt-4 text-center text-2xl font-bold text-nu-dark">{isLogin ? 'OTP Verification' : 'Verify your email'}</h2>
+      <h2 className="mt-4 text-center text-2xl font-bold text-nu-dark">{isLogin || isReset ? 'OTP Verification' : 'Verify your email'}</h2>
       <p className="mx-auto mt-2 max-w-sm text-center text-sm text-slate-500">Enter the 6-digit code we sent to <span className="font-medium text-slate-700">{email || 'your email address'}</span>.</p>
       <form onSubmit={handleSubmit} className="mt-7">
         <fieldset disabled={isSubmitting || isResending || isExpired}>

@@ -50,6 +50,10 @@ export const authApi = {
   verifyRegistrationOtp: (body) => apiRequest('/users/verify-registration-otp', { body }),
   resendLoginOtp: (body) => apiRequest('/users/resend-login-otp', { body }),
   resendRegistrationOtp: (body) => apiRequest('/users/resend-registration-otp', { body }),
+  forgotPassword: (body) => apiRequest('/users/forgot-password', { body }),
+  verifyResetOtp: (body) => apiRequest('/users/verify-reset-otp', { body }),
+  resendResetOtp: (body) => apiRequest('/users/resend-reset-otp', { body }),
+  resetPassword: (body) => apiRequest('/users/reset-password', { body }),
   refresh: () => apiRequest('/users/refresh', { body: {} }),
   logout: () => apiRequest('/users/logout', { body: {} }),
 };

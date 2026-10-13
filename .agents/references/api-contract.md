@@ -18,6 +18,10 @@
 | `POST` | `/api/users/verify-registration-otp` | Public, rate-limited | Verify registration OTP, create the student account, and issue tokens. |
 | `POST` | `/api/users/resend-registration-otp` | Public, rate-limited | Resend a registration OTP within cooldown and count limits. |
 | `POST` | `/api/users/resend-login-otp` | Public, rate-limited | Resend a login OTP within cooldown and count limits. |
+| `POST` | `/api/users/forgot-password` | Public, rate-limited | Send a password-reset OTP when the email belongs to an account. The response message is the same when it does not. |
+| `POST` | `/api/users/verify-reset-otp` | Public, rate-limited | Verify a password-reset OTP and return a short-lived reset token. |
+| `POST` | `/api/users/resend-reset-otp` | Public, rate-limited | Resend a password-reset OTP within cooldown and count limits. |
+| `POST` | `/api/users/reset-password` | Public, rate-limited | Set a new password with a valid reset token. |
 | `POST` | `/api/users/refresh` | Refresh cookie | Refresh the access token. |
 | `POST` | `/api/users/logout` | Refresh cookie when present | Clear the refresh-token cookie. |
 | `GET` | `/api/admin/dashboard` | Bearer access token + `admin` role | Return event metrics and recently updated non-archived events for the admin dashboard. |
@@ -29,6 +33,10 @@ Registration defaults new users to the `student` role. The current user route do
 - Registration accepts string fields `studentId`, `firstName`, optional `middleName`, `lastName`, `email`, and `password`. IDs use `YYYY-######`; names allow Unicode letters, spaces, apostrophes, and hyphens. Email has no campus domain restriction and is trimmed/lowercased.
 - Registration passwords require at least 8 characters, uppercase/lowercase letters, a number, and a symbol. The bcrypt input limit is 72 UTF-8 bytes. Login accepts existing passwords without applying new registration complexity rules.
 - Login accepts `{ email, password }`. Both OTP verification endpoints accept `{ challengeId, otp }`, with a string challenge ID and a six-digit string code. Both resend endpoints accept `{ challengeId }`.
+- `POST /api/users/forgot-password` accepts `{ email }` and always returns **200** with the same `message` for a known or unknown account. A known account also returns `challengeId`, ISO `expiresAt`, and `retryAfterSeconds`. Invalid email input returns **400**.
+- `POST /api/users/verify-reset-otp` accepts `{ challengeId, otp }` and returns `resetToken` plus ISO `expiresAt`. It does not return `accesstoken` or set the refresh cookie. The reset token has `purpose: "password-reset"` and expires in 10 minutes.
+- `POST /api/users/resend-reset-otp` accepts `{ challengeId }` and uses the login resend cooldown and limit.
+- `POST /api/users/reset-password` accepts `{ resetToken, password }`. The password uses the registration complexity rules. Success returns **200** and does not issue a session. Reused, expired, or wrong-purpose tokens return **401**.
 - Starting or resending an OTP returns `message`, `challengeId`, ISO `expiresAt`, and `retryAfterSeconds` (the configured resend cooldown). Registration start returns `202`; login start and resends return `200`.
 - Verification returns `accesstoken`, a `user` display object with `firstName`, `lastName`, and `role`, and the refresh cookie; registration verification returns `201`, login verification returns `200`. Refresh also returns the display object so each portal can restore the name and role after reload.
 

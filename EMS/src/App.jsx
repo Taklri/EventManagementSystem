@@ -23,6 +23,8 @@ import AdminEventEditPage from './pages/AdminEventEditPage';
 import AdminStudentsPage from './pages/Adminstudentpage';
 import AdminRegistrationFormsPage from './pages/AdminRegistrationFormsPage';
 import AdminRegistrationFormEditPage from './pages/AdminRegistrationFormEditPage';
+import AdminRegistrationFormDetailsPage from './pages/AdminRegistrationFormDetailsPage';
+import AdminRegistrationResponsePage from './pages/AdminRegistrationResponsePage';
 import { Toaster } from './components/ui/sonner';
 
 const AdminEventsPage = lazy(() => import('./pages/AdminEventsPage'));
@@ -137,6 +139,8 @@ const RouteContent = () => {
         <Route path="students" element={<AdminStudentsPage />} />
         <Route path="registration-forms" element={<AdminRegistrationFormsPage />} />
         <Route path="registration-forms/new" element={<AdminRegistrationFormEditPage />} />
+        <Route path="registration-forms/:id/responses/:responseId" element={<AdminRegistrationResponsePage />} />
+        <Route path="registration-forms/:id" element={<AdminRegistrationFormDetailsPage />} />
         <Route path="registration-forms/:id/edit" element={<AdminRegistrationFormEditPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>

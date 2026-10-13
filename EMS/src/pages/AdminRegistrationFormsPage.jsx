@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, Edit3, FileQuestion, Plus, RotateCcw, Search } from 'lucide-react';
+import { Archive, Edit3, Eye, FileQuestion, Plus, RotateCcw, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -173,7 +173,12 @@ const AdminRegistrationFormsPage = () => {
                 {state.forms.map((form) => (
                   <tr key={form._id} className="align-middle">
                     <td className="px-4 py-4">
-                      <p className="font-semibold text-nu-dark">{form.name}</p>
+                      <Link
+                        to={`/admin/registration-forms/${form._id}`}
+                        className="font-semibold text-nu-dark underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy focus-visible:ring-offset-2"
+                      >
+                        {form.name}
+                      </Link>
                       <p className="mt-1 max-w-md truncate text-xs text-slate-500">
                         {form.description || 'No description'}
                       </p>
@@ -189,25 +194,41 @@ const AdminRegistrationFormsPage = () => {
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex justify-end gap-2">
-                        <Button asChild variant="outline" className="min-h-9 px-3">
-                          <Link to={`/admin/registration-forms/${form._id}/edit`}>
-                            <Edit3 size={14} aria-hidden="true" />
-                            Edit
+                        <Button asChild variant="outline" className="h-9 min-h-9 w-9 p-0" title="Edit form">
+                          <Link
+                            to={`/admin/registration-forms/${form._id}/edit`}
+                            aria-label={`Edit ${form.name}`}
+                          >
+                            <Edit3 size={16} aria-hidden="true" />
+                            <span className="sr-only">Edit form</span>
+                          </Link>
+                        </Button>
+                        <Button asChild variant="ghost" className="h-9 min-h-9 w-9 p-0" title="View responses">
+                          <Link
+                            to={`/admin/registration-forms/${form._id}`}
+                            aria-label={`View responses for ${form.name}`}
+                          >
+                            <Eye size={16} aria-hidden="true" />
+                            <span className="sr-only">View responses</span>
                           </Link>
                         </Button>
                         <Button
                           type="button"
                           variant="ghost"
-                          className="min-h-9 px-3"
+                          className="h-9 min-h-9 w-9 p-0"
+                          title={form.isArchived ? 'Unarchive form' : 'Archive form'}
+                          aria-label={`${form.isArchived ? 'Unarchive' : 'Archive'} ${form.name}`}
                           disabled={busyId === form._id}
                           onClick={() => void toggleArchive(form)}
                         >
                           {form.isArchived ? (
-                            <RotateCcw size={14} aria-hidden="true" />
+                            <RotateCcw size={16} aria-hidden="true" />
                           ) : (
-                            <Archive size={14} aria-hidden="true" />
+                            <Archive size={16} aria-hidden="true" />
                           )}
-                          {form.isArchived ? 'Unarchive' : 'Archive'}
+                          <span className="sr-only">
+                            {form.isArchived ? 'Unarchive form' : 'Archive form'}
+                          </span>
                         </Button>
                       </div>
                     </td>

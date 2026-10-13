@@ -13,6 +13,9 @@ import { authorizeRoles } from '../../middleware/authorize.js';
 import {
   archiveRegistrationForm,
   createRegistrationForm,
+  exportRegistrationFormResponses,
+  getRegistrationFormResponseById,
+  getRegistrationFormResponses,
   getRegistrationFormById,
   listRegistrationForms,
   unarchiveRegistrationForm,
@@ -32,6 +35,9 @@ router.get('/events/:id/attendance', authenticate, authorizeRoles('admin'), getA
 router.get('/events/:id/attendance/records', authenticate, authorizeRoles('admin'), getAdminAttendanceRecords);
 router.get('/registration-forms', authenticate, authorizeRoles('admin'), listRegistrationForms);
 router.post('/registration-forms', authenticate, authorizeRoles('admin'), createRegistrationForm);
+router.get('/registration-forms/:id/responses', authenticate, authorizeRoles('admin'), getRegistrationFormResponses);
+router.get('/registration-forms/:id/responses/export', authenticate, authorizeRoles('admin'), exportRegistrationFormResponses);
+router.get('/registration-forms/:id/responses/:responseId', authenticate, authorizeRoles('admin'), getRegistrationFormResponseById);
 router.get('/registration-forms/:id', authenticate, authorizeRoles('admin'), getRegistrationFormById);
 router.put('/registration-forms/:id', authenticate, authorizeRoles('admin'), updateRegistrationForm);
 router.patch('/registration-forms/:id/archive', authenticate, authorizeRoles('admin'), archiveRegistrationForm);

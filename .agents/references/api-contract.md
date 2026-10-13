@@ -85,6 +85,9 @@ The admin dashboard response is `{ metrics: { total, upcoming, ongoing, archived
 | `POST` | `/api/admin/events/:id/attendance/session` | Bearer token + `admin` role | Legacy QR-session endpoint retained for already-issued links; the portal uses camera photos instead. |
 | `GET` | `/api/admin/events/:id/attendance` | Bearer token + `admin` role | Return attendance totals. |
 | `GET` | `/api/admin/events/:id/attendance/records` | Bearer token + `admin` role | Return attendance records for an event. |
+| `GET` | `/api/admin/registration-forms/:id/responses` | Bearer token + `admin` role | Return paginated responses submitted through a reusable registration form. |
+| `GET` | `/api/admin/registration-forms/:id/responses/:responseId` | Bearer token + `admin` role | Return one submitted response and its answer snapshot. |
+| `GET` | `/api/admin/registration-forms/:id/responses/export` | Bearer token + `admin` role | Download a formatted Excel workbook for a reusable form's responses. |
 
 ### Event discovery queries
 
@@ -109,6 +112,8 @@ Every event response includes safe defaults for fields added after the initial s
 ## Reusable registration forms
 
 Admin form endpoints are protected by the admin role. They support list, create, read, update, archive, and unarchive operations under `/api/admin/registration-forms`. Form updates modify the current questions in place; submitted registrations retain answer and question-label snapshots. New required-registration events use `registrationFormId`; open events clear form and capacity. Archived forms stay available to attached events and are cleaned up after 30 days only when unreferenced.
+
+`GET /api/admin/registration-forms/:id/responses` returns `{ form, responses, pagination }` for all submitted registrations belonging to events that use the reusable form. It accepts `page`, `limit`, and `search`; response students include `studentId`, `name`, `program`, and `yearLevel`. `GET /api/admin/registration-forms/:id/responses/:responseId` returns one response for the dedicated admin answer view. `GET /api/admin/registration-forms/:id/responses/export` returns a formatted `.xlsx` workbook with response and question sheets.
 
 ## Response conventions
 

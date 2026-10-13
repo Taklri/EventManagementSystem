@@ -59,7 +59,7 @@ export const getRegistrationForm = async (req, res) => {
         "title startDate endDate registrationMode registrationForm registrationFormId capacity isArchived",
       ),
       User.findById(req.user.sub).select(
-        "firstName middleName lastName studentId email",
+        "firstName middleName lastName studentId email program yearLevel",
       ),
     ]);
     if (!event) return res.status(404).json({ message: "Event not found" });
@@ -84,6 +84,8 @@ export const getRegistrationForm = async (req, res) => {
           .join(" "),
         studentId: student.studentId,
         email: student.email,
+        program: student.program || "",
+        yearLevel: student.yearLevel || "",
       },
       registration: registration ? registrationPayload(registration) : null,
     });

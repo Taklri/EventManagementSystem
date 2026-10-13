@@ -18,6 +18,16 @@ export const PROGRAM_OPTIONS = [
     'Dental Technology NC IV',
 ];
 
+export const YEAR_LEVEL_OPTIONS = [
+    '1st Year',
+    '2nd Year',
+    '3rd Year',
+    '4th Year',
+    '5th Year',
+    '6th Year',
+    '7th Year',
+];
+
 export const isValidEmail = (email) => {
     const localPart = email.split('@')[0];
     return email.length <= 254 && localPart.length <= 64 && emailPattern.test(email)
@@ -36,6 +46,7 @@ export const passwordValidationError = (password) => {
 export const yearLevelValidationError = (yearLevel) => {
     if (typeof yearLevel !== 'string' || !yearLevel.trim()) return 'Year level is required';
     if (yearLevel.trim().length > 40) return 'Year level must be 40 characters or fewer';
+    if (!YEAR_LEVEL_OPTIONS.includes(yearLevel.trim())) return 'Please select a valid year level';
     return '';
 };
 

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/AuthLayout';
 import PasswordVisibilityToggle from '../components/PasswordVisibilityToggle';
 import { authApi } from '../lib/api';
-import { PROGRAM_OPTIONS, sanitizeName, sanitizeStudentId, validateEmail, validateName, validatePassword, validateProgram, validateStudentId, validateYearLevel } from '../lib/authValidation';
+import { PROGRAM_OPTIONS, YEAR_LEVEL_OPTIONS, sanitizeName, sanitizeStudentId, validateEmail, validateName, validatePassword, validateProgram, validateStudentId, validateYearLevel } from '../lib/authValidation';
 
 const initialValues = { studentId: '', firstName: '', middleName: '', lastName: '', yearLevel: '', program: '', email: '', password: '', confirmPassword: '' };
 
@@ -106,13 +106,13 @@ export default function RegisterPage() {
     </div>;
   }
 
-  function selectField(id, label, fieldName, options) {
+  function selectField(id, label, fieldName, options, placeholder) {
     const error = fieldError(fieldName);
     return <div className={options.className || ''}>
       <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-slate-700">{label}<span className="ml-1 text-red-600" aria-hidden="true">*</span></label>
       <select id={id} name={fieldName} required value={values[fieldName]} onChange={(event) => update(fieldName, event.target.value)} onBlur={() => setTouched((current) => ({ ...current, [fieldName]: true }))}
         aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className={`${fieldClass(fieldName)} bg-white`}>
-        <option value="">Select your program</option>
+        <option value="">{placeholder}</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
       {error && <p aria-live="polite" id={`${id}-error`} className="mt-1 text-[11px] leading-4 text-red-700">{error}</p>}
@@ -131,8 +131,8 @@ export default function RegisterPage() {
           {field('last-name', 'Last name', 'lastName', { autoComplete: 'family-name' })}
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {field('year-level', 'Year level', 'yearLevel', { placeholder: 'e.g. 1st Year', maxLength: 40 })}
-          {selectField('register-program', 'Program', 'program', PROGRAM_OPTIONS)}
+          {selectField('year-level', 'Year level', 'yearLevel', YEAR_LEVEL_OPTIONS, 'Select your year level')}
+          {selectField('register-program', 'Program', 'program', PROGRAM_OPTIONS, 'Select your program')}
         </div>
         {field('register-email', 'Email', 'email', { type: 'email', autoComplete: 'email', inputMode: 'email', placeholder: 'name@example.com' })}
         <div>

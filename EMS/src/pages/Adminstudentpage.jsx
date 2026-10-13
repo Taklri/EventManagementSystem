@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Eye, Pencil, Search, X } from 'lucide-react';
 import {
   Table,
@@ -20,6 +21,7 @@ import {
   validateName,
   validateStudentId,
   validateYearLevel,
+  YEAR_LEVEL_OPTIONS,
   PROGRAM_OPTIONS,
 } from '../lib/authValidation';
 
@@ -80,9 +82,10 @@ function Modal({ title, onClose, children }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
+    (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex min-h-screen items-center justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-sm sm:p-6"
       onClick={onClose}
     >
       <div
@@ -90,7 +93,7 @@ function Modal({ title, onClose, children }) {
         aria-modal="true"
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+        className="my-auto max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-2xl sm:max-h-[90vh]"
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-bold text-nu-dark">{title}</h2>
@@ -106,6 +109,8 @@ function Modal({ title, onClose, children }) {
         {children}
       </div>
     </div>
+    ),
+    document.body,
   );
 }
 
@@ -262,6 +267,7 @@ function EditStudentModal({ student, students, onClose, onSave }) {
             id="edit-student-id"
             value={studentId}
             maxLength={11}
+            autoFocus
             onChange={(event) => {
               setStudentId(sanitizeStudentId(event.target.value));
               setErrors({ ...errors, studentId: '' });
@@ -326,17 +332,19 @@ function EditStudentModal({ student, students, onClose, onSave }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="edit-year-level" className={modalLabelClass}>Year level</label>
-            <Input
+            <select
               id="edit-year-level"
               value={yearLevel}
-              maxLength={40}
               onChange={(event) => {
                 setYearLevel(event.target.value);
                 setErrors({ ...errors, yearLevel: '' });
               }}
               aria-invalid={Boolean(errors.yearLevel)}
-              className={borderOf('yearLevel')}
-            />
+              className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring ${borderOf('yearLevel')}`}
+            >
+              <option value="">Select a year level</option>
+              {YEAR_LEVEL_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
             {errorBox('yearLevel')}
           </div>
           <div>

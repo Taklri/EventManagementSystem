@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Archive, ArrowLeft, Camera, MapPin, Pencil, RotateCcw } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -183,6 +183,9 @@ const AdminEventDetailsPage = () => {
   const { id } = useParams();
   const location = useLocation();
   const { accessToken } = useAuth();
+  const sections = useRef(null);
+  const requestedTab = new URLSearchParams(location.search).get('tab');
+  const [tab, setTab] = useState(requestedTab === 'registration' || requestedTab === 'attendance' ? requestedTab : 'details');
   const returnTo =
     typeof location.state?.returnTo === 'string' &&
     /^\/admin\/events(?:\?|$)/.test(location.state.returnTo)
@@ -197,6 +200,10 @@ const AdminEventDetailsPage = () => {
   const [registrationSummary, setRegistrationSummary] = useState(null);
   const [attendanceSummary, setAttendanceSummary] = useState(null);
   const [attendanceError, setAttendanceError] = useState('');
+
+  useEffect(() => {
+    setTab(requestedTab === 'registration' || requestedTab === 'attendance' ? requestedTab : 'details');
+  }, [id, requestedTab]);
 
   useEffect(() => {
     let active = true;
@@ -214,6 +221,12 @@ const AdminEventDetailsPage = () => {
       active = false;
     };
   }, [id, attempt, accessToken]);
+
+  useEffect(() => {
+    if (!event || event.registrationMode !== 'required') return;
+    if (tab !== 'registration' && tab !== 'attendance') return;
+    sections.current?.scrollIntoView({ block: 'start' });
+  }, [event, tab]);
 
   useEffect(() => {
     if (!event || event.registrationMode !== 'required') return undefined;
@@ -313,7 +326,12 @@ const AdminEventDetailsPage = () => {
 
           <EventDetailsHero event={event} />
 
-          <Tabs defaultValue="details" className="space-y-5">
+          <Tabs
+            value={event.registrationMode === 'required' && (tab === 'registration' || tab === 'attendance') ? tab : 'details'}
+            onValueChange={setTab}
+            className="space-y-5"
+          >
+            <div ref={sections} />
             <TabsList aria-label="Event management sections">
               <TabsTrigger value="details">Event Details</TabsTrigger>
               {event.registrationMode === 'required' && (

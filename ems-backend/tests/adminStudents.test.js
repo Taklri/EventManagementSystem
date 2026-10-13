@@ -63,6 +63,7 @@ test('rejects invalid identifiers, fields, and duplicate student IDs', async () 
     { params: { id }, body: { ...body, role: 'admin' } },
     { params: { id }, body: { ...body, firstName: {} } },
     { params: { id }, body: { ...body, studentId: 'invalid' } },
+    { params: { id }, body: { ...body, yearLevel: '8th Year' } },
   ]) {
     const res = response(); await updateAdminStudent(request, res); assert.equal(res.statusCode, 400);
   }

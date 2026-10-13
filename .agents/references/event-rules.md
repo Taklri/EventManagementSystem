@@ -63,12 +63,12 @@ Status is added to returned event objects by `utils/eventStatus.js`.
 - Registration is available only when `registrationMode` is `required` and before the event starts.
 - A full event places new students in `waitlisted` status. Waitlist entries preserve creation order and are not automatically promoted in v1.
 - A student may cancel before the event starts; the record is retained with `cancelled` status.
-- Attendance is available only for registered students during the event window. A signed, short-lived event QR token opens a preview; the first explicit confirmation records `timeIn` and a later confirmation records `timeOut`.
+- Attendance is available only for registered students during the event window. The student submits one camera photo for time in and a later camera photo for time out; the server records both timestamps and the signed-in student's identity.
 - No-registration events do not collect attendance records.
 
 ## Current non-features
 
-The system does not implement organization accounts, online meeting links, venue directories, payment processing, approval or rejection states, automatic waitlist promotion, attendance photos/biometrics, or automated event reminders.
+The system does not implement organization accounts, online meeting links, venue directories, payment processing, approval or rejection states, automatic waitlist promotion, attendance biometrics, or automated event reminders. Attendance proof photos are stored in Cloudinary for admin review.
 
 ## Registration forms and attendance transitions
 
@@ -76,5 +76,5 @@ The system does not implement organization accounts, online meeting links, venue
 - Archived forms are hidden from new event selection but remain readable by attached events. Cleanup removes forms archived at least 30 days only when no event references them.
 - Student name and school ID are derived from the signed-in account and are never configurable form items.
 - A cancelled student may submit the form again before event start. Admins can view paginated responses and export a full CSV roster for printing.
-- For registration-required events, the first confirmed QR scan stores student name, school ID, and time in from the signed-in account. A later confirmed scan stores time out. Neither timestamp is editable through student APIs. Previewing a QR scan performs no write.
-- Time in is accepted from 30 minutes before start through event end; time out is accepted until 30 minutes after event end. QR sessions last at most 15 minutes. Open events have no attendance; archive blocks new scans but preserves admin read access to historical totals.
+- For registration-required events, the first submitted camera photo stores a Cloudinary proof URL, student name, school ID, and server time in from the signed-in account. A later submitted photo stores the time out proof and timestamp. Neither timestamp or proof can be replaced through student APIs. Admin roster records include links to the stored proof photos.
+- Time in is accepted from 30 minutes before start through event end; time out is accepted until 30 minutes after event end. Open events have no attendance; archive blocks new submissions but preserves admin read access to historical totals.

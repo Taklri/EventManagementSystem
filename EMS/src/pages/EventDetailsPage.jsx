@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
-import { ArrowLeft, MapPin } from 'lucide-react';
+import { ArrowLeft, Camera, MapPin } from 'lucide-react';
 import {
   EventDetailsBody,
   EventDetailsHero,
@@ -12,11 +12,69 @@ import { EventError } from '../components/EventFeedback';
 import { eventsApi } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
+const attendanceTime = (value) =>
+  value
+    ? new Date(value).toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    : 'Not submitted yet';
+
+const AttendanceProofSection = ({ attendance }) => (
+  <section
+    aria-labelledby="attendance-proof-heading"
+    className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+  >
+    <div>
+      <h2 id="attendance-proof-heading" className="text-lg font-semibold text-nu-dark">
+        Attendance
+      </h2>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        Your submitted proof photos and the official time recorded by the system.
+      </p>
+    </div>
+    <div className="mt-5 grid gap-4 @min-[640px]:grid-cols-2">
+      {[
+        ['Time in', attendance?.timeIn, attendance?.timeInPhotoUrl],
+        ['Time out', attendance?.timeOut, attendance?.timeOutPhotoUrl],
+      ].map(([label, time, photo]) => (
+        <article key={label} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+          <h3 className="text-sm font-semibold text-nu-dark">{label}</h3>
+          <p className="mt-2 text-xs text-slate-600">{attendanceTime(time)}</p>
+          {photo ? (
+            <a
+              href={photo}
+              target="_blank"
+              rel="noreferrer"
+              className="group mt-3 block overflow-hidden rounded-lg border border-slate-200 bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy focus-visible:ring-offset-2"
+            >
+              <img
+                src={photo}
+                alt={`${label} attendance proof`}
+                className="h-40 w-full object-cover transition group-hover:opacity-90"
+              />
+              <span className="block px-3 py-2 text-xs font-semibold text-nu-navy">
+                View submitted photo
+              </span>
+            </a>
+          ) : (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-xs text-slate-500">
+              No proof photo submitted.
+            </p>
+          )}
+        </article>
+      ))}
+    </div>
+  </section>
+);
+
 const EventDetails = ({ id, returnTo, accessToken }) => {
   const [event, setEvent] = useState(null);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const [registration, setRegistration] = useState(null);
+  const [attendance, setAttendance] = useState(null);
   const [capacityState, setCapacityState] = useState({
     capacity: null,
     registeredCount: 0,
@@ -31,6 +89,7 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
         if (!active) return;
         setEvent(eventData.event);
         setRegistration(registrationData.registration);
+        setAttendance(registrationData.attendance || null);
         setCapacityState({
           capacity: registrationData.capacity || null,
           registeredCount: registrationData.registeredCount || 0,
@@ -180,9 +239,25 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                   </p>
                 )}
                 {registration?.status === 'registered' && (
-                  <p className="mt-3 text-center text-xs text-slate-500">
-                    Scan the event QR code while you are signed in to record attendance.
-                  </p>
+                  <>
+                    {attendance?.timeOut ? (
+                      <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-semibold text-emerald-700">
+                        Attendance complete. Your time in and time out are saved.
+                      </p>
+                    ) : (
+                      <Button asChild className="mt-4 w-full">
+                        <Link to={`/attendance/${id}`}>
+                          <Camera size={16} aria-hidden="true" />
+                          {attendance?.timeIn ? 'Time out' : 'Time in'} with camera
+                        </Link>
+                      </Button>
+                    )}
+                    {attendance?.timeIn && !attendance?.timeOut && (
+                      <p className="mt-3 text-center text-xs text-slate-500">
+                        Time in is saved. Submit one more camera photo when you leave to record time out.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -230,6 +305,9 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
           </section>
         </aside>
       </div>
+      {event.registrationMode === 'required' && registration?.status === 'registered' && (
+        <AttendanceProofSection attendance={attendance} />
+      )}
     </div>
   );
 };

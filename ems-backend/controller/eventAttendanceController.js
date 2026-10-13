@@ -1,14 +1,20 @@
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { fileTypeFromBuffer } from "file-type";
 import Event from "../models/Event.js";
 import EventAttendance from "../models/EventAttendance.js";
 import EventRegistration from "../models/EventRegistration.js";
 import User from "../models/User.js";
+import {
+  removeEventImage,
+  uploadAttendancePhoto,
+} from "../services/eventImageService.js";
 import { notifyStudent } from "../services/notificationService.js";
 
 const EARLY_CHECKIN_MS = 30 * 60 * 1000;
 const LATE_CHECKOUT_MS = 30 * 60 * 1000;
 const QR_LIFETIME_SECONDS = 15 * 60;
+const SUPPORTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const getEvent = async (id, { allowArchived = false } = {}) => {
   if (!mongoose.isValidObjectId(id)) return { error: { status: 400, message: "Event id is not valid" } };
@@ -68,6 +74,173 @@ const attendanceContext = async (req) => {
   return { event, attendance, now, action: attendance ? "timeOut" : "timeIn" };
 };
 
+const studentAttendanceContext = async (req) => {
+  const { event, error } = await getEvent(req.params.id);
+  if (error) return { error };
+  const registration = await EventRegistration.findOne({
+    event: event._id,
+    student: req.user.sub,
+    status: "registered",
+  });
+  if (!registration) {
+    return {
+      error: {
+        status: 403,
+        message: "You must be registered for this event to record attendance",
+      },
+    };
+  }
+
+  const attendance = await EventAttendance.findOne({
+    event: event._id,
+    student: req.user.sub,
+  });
+  const now = new Date();
+  if (attendance?.timeOut) {
+    return { event, attendance, now, action: "complete", canSubmit: false };
+  }
+  if (
+    !attendance &&
+    (now.getTime() < event.startDate.getTime() - EARLY_CHECKIN_MS ||
+      now > event.endDate)
+  ) {
+    return {
+      event,
+      attendance,
+      now,
+      action: "timeIn",
+      canSubmit: false,
+      message:
+        now < event.startDate
+          ? "Time in is not open yet"
+          : "Time in is closed",
+    };
+  }
+  if (
+    attendance &&
+    now.getTime() > event.endDate.getTime() + LATE_CHECKOUT_MS
+  ) {
+    return {
+      event,
+      attendance,
+      now,
+      action: "timeOut",
+      canSubmit: false,
+      message: "Time out is closed",
+    };
+  }
+  return {
+    event,
+    attendance,
+    now,
+    action: attendance ? "timeOut" : "timeIn",
+    canSubmit: true,
+  };
+};
+
+const attendancePayload = (attendance) =>
+  attendance
+    ? {
+        _id: attendance._id,
+        timeIn: attendance.timeIn,
+        timeOut: attendance.timeOut || null,
+        timeInPhotoUrl: attendance.timeInPhotoUrl || null,
+        timeOutPhotoUrl: attendance.timeOutPhotoUrl || null,
+      }
+    : null;
+
+const validatePhoto = async (file) => {
+  if (!file?.buffer) return "Take a photo before submitting attendance";
+  const detected = await fileTypeFromBuffer(file.buffer);
+  if (
+    !detected ||
+    !SUPPORTED_PHOTO_TYPES.has(detected.mime) ||
+    detected.mime !== file.mimetype
+  ) {
+    return "Attendance photo must be a JPEG, PNG, or WebP image";
+  }
+  return null;
+};
+
+const uploadPhotoOrThrow = async (file) => {
+  const validationMessage = await validatePhoto(file);
+  if (validationMessage) {
+    const error = new Error(validationMessage);
+    error.status = 400;
+    error.field = "photo";
+    throw error;
+  }
+  return uploadAttendancePhoto(file.buffer);
+};
+
+export const getStudentAttendance = async (req, res) => {
+  try {
+    const context = await studentAttendanceContext(req);
+    if (context.error) {
+      return res.status(context.error.status).json({ message: context.error.message });
+    }
+    return res.status(200).json({
+      event: {
+        _id: context.event._id,
+        title: context.event.title,
+        startDate: context.event.startDate,
+        endDate: context.event.endDate,
+      },
+      action: context.action,
+      canSubmit: context.canSubmit,
+      message: context.message || null,
+      attendance: attendancePayload(context.attendance),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Unable to load attendance status" });
+  }
+};
+
+// Keep the old signed-link contract readable for already-issued QR links. New
+// clients always use the camera-photo flow below and never receive a QR token.
+const recordLegacyAttendance = async (req, res) => {
+  try {
+    const context = await attendanceContext(req);
+    if (context.error)
+      return res
+        .status(context.error.status)
+        .json({ message: context.error.message });
+    if (context.action === "timeIn") {
+      const student = await User.findById(req.user.sub).select(
+        "firstName middleName lastName studentId",
+      );
+      if (!student)
+        return res.status(401).json({ message: "Student account not found" });
+      const attendance = await EventAttendance.create({
+        event: context.event._id,
+        student: student._id,
+        studentName: [student.firstName, student.middleName, student.lastName]
+          .filter(Boolean)
+          .join(" "),
+        studentId: student.studentId,
+        timeIn: context.now,
+      });
+      return res.status(201).json({ message: "Time in recorded", attendance });
+    }
+    const attendance = await EventAttendance.findOneAndUpdate(
+      { _id: context.attendance._id, timeOut: null },
+      { $set: { timeOut: context.now } },
+      { new: true },
+    );
+    if (!attendance)
+      return res.status(409).json({ message: "Attendance already completed" });
+    return res.status(200).json({ message: "Time out recorded", attendance });
+  } catch (error) {
+    if (error.code === 11000)
+      return res.status(409).json({
+        message: "Time in already recorded. Scan again to time out.",
+      });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to record attendance" });
+  }
+};
+
 export const previewAttendance = async (req, res) => {
   try {
     const context = await attendanceContext(req);
@@ -90,9 +263,28 @@ export const previewAttendance = async (req, res) => {
 };
 
 export const recordAttendance = async (req, res) => {
+  if (!req.file && typeof req.body?.token === "string" && req.body.token) {
+    return recordLegacyAttendance(req, res);
+  }
+  let uploadedPhoto;
+  let photoPersisted = false;
   try {
-    const context = await attendanceContext(req);
-    if (context.error) return res.status(context.error.status).json({ message: context.error.message });
+    const context = await studentAttendanceContext(req);
+    if (context.error)
+      return res
+        .status(context.error.status)
+        .json({ message: context.error.message });
+    if (!context.canSubmit) {
+      return res.status(context.action === "complete" ? 409 : 400).json({
+        message:
+          context.message ||
+          (context.action === "complete"
+            ? "Attendance already completed"
+            : "Attendance is not open"),
+      });
+    }
+
+    uploadedPhoto = await uploadPhotoOrThrow(req.file);
     if (context.action === "timeIn") {
       const student = await User.findById(req.user.sub).select("firstName middleName lastName studentId");
       if (!student) return res.status(401).json({ message: "Student account not found" });
@@ -102,7 +294,10 @@ export const recordAttendance = async (req, res) => {
         studentName: [student.firstName, student.middleName, student.lastName].filter(Boolean).join(" "),
         studentId: student.studentId,
         timeIn: context.now,
+        timeInPhotoUrl: uploadedPhoto.imageUrl,
+        timeInPhotoPublicId: uploadedPhoto.imagePublicId,
       });
+      photoPersisted = true;
       await notifyStudent({
         user: req.user.sub,
         type: "attendance",
@@ -110,14 +305,26 @@ export const recordAttendance = async (req, res) => {
         message: `Attendance was recorded for ${context.event.title}.`,
         event: context.event._id,
       });
-      return res.status(201).json({ message: "Time in recorded", attendance });
+      return res
+        .status(201)
+        .json({ message: "Time in recorded", attendance: attendancePayload(attendance) });
     }
     const attendance = await EventAttendance.findOneAndUpdate(
       { _id: context.attendance._id, timeOut: null },
-      { $set: { timeOut: context.now } },
+      {
+        $set: {
+          timeOut: context.now,
+          timeOutPhotoUrl: uploadedPhoto.imageUrl,
+          timeOutPhotoPublicId: uploadedPhoto.imagePublicId,
+        },
+      },
       { new: true },
     );
-    if (!attendance) return res.status(409).json({ message: "Attendance already completed" });
+    if (!attendance) {
+      await removeEventImage(uploadedPhoto.imagePublicId).catch(() => {});
+      return res.status(409).json({ message: "Attendance already completed" });
+    }
+    photoPersisted = true;
     await notifyStudent({
       user: req.user.sub,
       type: "attendance",
@@ -125,9 +332,23 @@ export const recordAttendance = async (req, res) => {
       message: `Attendance was recorded for ${context.event.title}.`,
       event: context.event._id,
     });
-    return res.status(200).json({ message: "Time out recorded", attendance });
+    return res
+      .status(200)
+      .json({ message: "Time out recorded", attendance: attendancePayload(attendance) });
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ message: "Time in already recorded. Scan again to time out." });
+    if (!photoPersisted && uploadedPhoto?.imagePublicId) {
+      await removeEventImage(uploadedPhoto.imagePublicId).catch(() => {});
+    }
+    if (error.code === 11000)
+      return res
+        .status(409)
+        .json({ message: "Time in already recorded. Submit a photo for time out." });
+    if (error.status) {
+      return res.status(error.status).json({
+        message: error.message,
+        field: error.field,
+      });
+    }
     console.error(error);
     return res.status(500).json({ message: "Unable to record attendance" });
   }

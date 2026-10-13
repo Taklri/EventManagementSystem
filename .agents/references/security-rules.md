@@ -29,7 +29,8 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 - Event creation, update, archive, and unarchive operations require the `admin` role.
 - Event catalog and detail reads require an authenticated `student` or `admin` role. Student registration, cancellation, and attendance endpoints require the `student` role. Registration and attendance summaries, QR session creation, and attendance record lookup require the `admin` role.
 - The admin dashboard and admin event-list endpoints require a bearer token and the `admin` role. Portal route guards send students and admins to their own landing pages; backend middleware remains the authority for protected API access.
-- Profile updates allow an admin to update any profile or a user to update their own profile.
+- Profile name updates allow an admin to update any profile or a user to update their own profile. Email changes are not accepted on `PUT /api/users/:id`.
+- A signed-in user changes their own email or password only after a code sent to the current email address. Those codes are stored separately from login and password-reset codes. A successful password change sets `passwordChangedAt` and replaces the current session token; older access and refresh tokens are rejected.
 
 ## Rate limits
 
@@ -40,6 +41,12 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 - Registration OTP verification: 5 requests per 10 minutes.
 - Registration OTP resend: 3 requests per hour, with an application-level cooldown and resend count.
 - Login OTP resend: 3 requests per hour, with the configured `OTP_RESEND_SECONDS` cooldown and at most 3 resends per challenge.
+- Profile email-change request: 5 requests per 15 minutes.
+- Profile email-change verification: 5 requests per 10 minutes.
+- Profile email-change resend: 3 requests per hour, with the configured `OTP_RESEND_SECONDS` cooldown and at most 3 resends per challenge.
+- Profile password-change request: 5 requests per 15 minutes.
+- Profile password-change verification: 5 requests per 10 minutes.
+- Profile password-change resend: 3 requests per hour, with the configured `OTP_RESEND_SECONDS` cooldown and at most 3 resends per challenge.
 - Password reset request: 5 requests per 15 minutes.
 - Password reset OTP verification: 5 requests per 10 minutes.
 - Password reset OTP resend: 3 requests per hour, with the configured `OTP_RESEND_SECONDS` cooldown and at most 3 resends per challenge.
@@ -67,7 +74,7 @@ The backend reads private configuration from environment variables, including:
 - `BREVO_API_KEY`
 - `BREVO_SENDER_EMAIL`
 - `BREVO_SENDER_NAME`
-- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, and optional `CLOUDINARY_FOLDER` for server-side event cover uploads.
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, optional `CLOUDINARY_FOLDER` for event images, and optional `CLOUDINARY_PROFILE_FOLDER` for profile photos.
 
 Never copy values from `.env` into documentation, AI skills, logs, responses, commits, or screenshots.
 

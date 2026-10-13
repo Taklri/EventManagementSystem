@@ -12,6 +12,7 @@ import StudentShell from './components/StudentShell';
 import EventDetailsPage from './pages/EventDetailsPage';
 import MyEventsPage from './pages/MyEventsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import ProfilePage from './pages/ProfilePage';
 import AttendancePage from './pages/AttendancePage';
 import AdminShell from './components/AdminShell';
 import AdminDashboardPage from './pages/AdminDashboardPage';
@@ -97,6 +98,7 @@ const RouteContent = () => {
         <Route path="/events/:id" element={<EventDetailsPage />} />
         <Route path="/my-events" element={<MyEventsPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/attendance/:id" element={<AttendancePage />} />
       </Route>
       <Route
@@ -127,6 +129,7 @@ const RouteContent = () => {
         <Route path="events/new" element={<AdminEventCreatePage />} />
         <Route path="events/:id" element={<AdminEventDetailsPage />} />
         <Route path="events/:id/edit" element={<AdminEventEditPage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to={destination || '/'} replace />} />
     </Routes>

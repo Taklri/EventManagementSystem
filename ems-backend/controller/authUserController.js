@@ -15,7 +15,7 @@ import { tokenIssuedBeforePasswordChange } from '../middleware/auth.js';
 
 const RESET_NOTICE = 'If an account exists for that email, we sent a verification code.';
 
-const issueTokens = (user, res) => {
+export const issueTokens = (user, res) => {
     const accessToken = jwt.sign(
         {
             sub: user._id.toString(),
@@ -48,10 +48,11 @@ const issueTokens = (user, res) => {
     return accessToken;
 };
 
-const displayUser = (user) => ({
+export const displayUser = (user) => ({
     firstName: user.firstName,
     lastName: user.lastName,
-    role: user.role
+    role: user.role,
+    imageUrl: user.imageUrl || null,
 });
 
 

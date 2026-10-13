@@ -109,7 +109,7 @@ const EventOverview = ({ events, metrics }) => {
               </p>
               <p className="truncate text-xs text-slate-600">{organizerName(event)}</p>
               <div className="lg:justify-self-end">
-                <EventStatus status={event.status} />
+                <EventStatus status={event.status} showDot={false} />
               </div>
             </article>
           ))}

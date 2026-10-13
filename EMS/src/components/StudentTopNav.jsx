@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, ChevronDown, LogOut } from 'lucide-react';
+import { Bell, ChevronDown, LogOut, Settings } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { notificationsApi } from '../lib/api';
@@ -101,12 +101,16 @@ export default function StudentTopNav() {
           </NavLink>
           <details className="group relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 text-nu-dark outline-none focus-visible:ring-2 focus-visible:ring-nu-navy [&::-webkit-details-marker]:hidden">
-              <span
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-nu-navy text-sm font-semibold text-white"
-                aria-hidden="true"
-              >
-                {initials}
-              </span>
+              {user?.imageUrl ? (
+                <img src={user.imageUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+              ) : (
+                <span
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-nu-navy text-sm font-semibold text-white"
+                  aria-hidden="true"
+                >
+                  {initials}
+                </span>
+              )}
               <span className="hidden text-left md:block">
                 <span className="block max-w-40 truncate text-sm font-semibold">{displayName}</span>
                 <span className="block text-xs text-slate-500">Student</span>
@@ -122,6 +126,13 @@ export default function StudentTopNav() {
               <p className="px-3 py-2 text-xs text-slate-500">
                 Signed in as <span className="font-medium text-nu-dark">{displayName}</span>
               </p>
+              <NavLink
+                to="/profile"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-nu-navy hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy"
+              >
+                <Settings size={17} aria-hidden="true" />
+                Profile settings
+              </NavLink>
               <button
                 type="button"
                 onClick={handleSignOut}

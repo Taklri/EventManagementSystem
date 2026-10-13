@@ -152,7 +152,7 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    const { studentId, firstName, middleName, lastName, email } = req.body;
+    const { firstName, middleName, lastName } = req.body;
 
     const user = await User.findById(id);
 
@@ -176,30 +176,6 @@ export const updateUser = async (req, res) => {
       return res.status(400).json({
         message: "Last name cannot be empty",
       });
-    }
-    if (email !== undefined && !email.trim()) {
-      return res.status(400).json({
-        message: "Email cannot be empty",
-      });
-    }
-
-    // Email Validation if user already exist
-
-    if (email !== undefined) {
-      const normalizedEmail = email.trim().toLowerCase();
-
-      const emailexist = await User.findOne({
-        email: normalizedEmail,
-        _id: { $ne: id },
-      });
-
-      if (emailexist) {
-        return res.status(409).json({
-          message: "Email already exist",
-        });
-      }
-
-      user.email = normalizedEmail;
     }
 
     // Update data

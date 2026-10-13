@@ -58,6 +58,23 @@ export const authApi = {
   logout: () => apiRequest('/users/logout', { body: {} }),
 };
 
+export const profileApi = {
+  get: (token) => apiRequest('/users/me', { token }),
+  update: (body, token) => apiRequest('/users/me', { method: 'PATCH', body, token }),
+  uploadPhoto: (file, token) => {
+    const body = new FormData();
+    body.append('photo', file);
+    return apiRequest('/users/me/photo', { method: 'PUT', body, token });
+  },
+  removePhoto: (token) => apiRequest('/users/me/photo', { method: 'DELETE', token }),
+  requestEmailChange: (body, token) => apiRequest('/users/me/email/otp', { body, token }),
+  verifyEmailChange: (body, token) => apiRequest('/users/me/email/verify', { body, token }),
+  resendEmailChange: (body, token) => apiRequest('/users/me/email/resend', { body, token }),
+  requestPasswordChange: (body, token) => apiRequest('/users/me/password/otp', { body, token }),
+  verifyPasswordChange: (body, token) => apiRequest('/users/me/password/verify', { body, token }),
+  resendPasswordChange: (body, token) => apiRequest('/users/me/password/resend', { body, token }),
+};
+
 export const notificationsApi = {
   list: (token) => apiRequest('/notifications', { token }),
   markRead: (id, token) =>

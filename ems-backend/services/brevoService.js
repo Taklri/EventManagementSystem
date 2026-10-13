@@ -16,6 +16,14 @@ export const sendOtpEmail = async ({
             label: 'password reset',
             heading: 'Password Reset Verification',
         },
+        'email-change': {
+            label: 'email change',
+            heading: 'Email Change Verification',
+        },
+        'password-change': {
+            label: 'password change',
+            heading: 'Password Change Verification',
+        },
         login: {
             label: 'login',
             heading: 'Login Verification',

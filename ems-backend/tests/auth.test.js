@@ -90,7 +90,7 @@ async function invoke(handler, body = {}, cookies = {}) {
 function assertSignedIn(res, status) {
   assert.equal(res.statusCode, status);
   assert.ok(typeof res.body.accesstoken === 'string');
-  assert.deepEqual(res.body.user, { firstName: registration.firstName, lastName: registration.lastName, role: 'student' });
+  assert.deepEqual(res.body.user, { firstName: registration.firstName, lastName: registration.lastName, role: 'student', imageUrl: null });
   const claims = jwt.verify(res.body.accesstoken, process.env.JWT_SECRET_KEY);
   assert.equal(claims.sub, userId.toString());
   assert.equal(claims.role, 'student');

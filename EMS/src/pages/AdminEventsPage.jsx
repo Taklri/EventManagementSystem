@@ -250,7 +250,7 @@ const AdminEventsPage = () => {
                         {event.isArchived ? (
                           <ArchivedStatus />
                         ) : (
-                          <EventStatus status={event.status} />
+                          <EventStatus status={event.status} showDot={false} />
                         )}
                       </TableCell>
                       <TableCell>

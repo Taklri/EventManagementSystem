@@ -1,19 +1,23 @@
 import { useState } from 'react';
-import { CalendarDays, ChevronDown, LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, LayoutDashboard, LogOut, Menu, Settings, X } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import nuLogo from '../assets/NULOGO.svg';
 
-const AccountSummary = ({ name, initials, handleSignOut, signingOut, error }) => {
+const AccountSummary = ({ name, initials, imageUrl, handleSignOut, signingOut, error }) => {
   return (
     <details className="group relative">
       <summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5 text-left outline-none transition hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-nu-navy [&::-webkit-details-marker]:hidden">
-        <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-nu-navy text-xs font-semibold text-white"
-          aria-hidden="true"
-        >
-          {initials}
-        </span>
+        {imageUrl ? (
+          <img src={imageUrl} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+        ) : (
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-nu-navy text-xs font-semibold text-white"
+            aria-hidden="true"
+          >
+            {initials}
+          </span>
+        )}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-semibold text-nu-dark">{name}</span>
           <span className="block text-[11px] text-slate-500">Administrator</span>
@@ -27,6 +31,13 @@ const AccountSummary = ({ name, initials, handleSignOut, signingOut, error }) =>
       </summary>
       <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
         <p className="px-3 py-2 text-xs text-slate-500">Signed in as {name}</p>
+        <Link
+          to="/admin/profile"
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-nu-navy hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy"
+        >
+          <Settings size={16} aria-hidden="true" />
+          Profile settings
+        </Link>
         <button
           type="button"
           onClick={handleSignOut}
@@ -134,6 +145,7 @@ const AdminShell = () => {
             <AccountSummary
               name={name}
               initials={initials}
+              imageUrl={user?.imageUrl}
               handleSignOut={handleSignOut}
               signingOut={signingOut}
               error={error}
@@ -150,6 +162,7 @@ const AdminShell = () => {
             <AccountSummary
               name={name}
               initials={initials}
+              imageUrl={user?.imageUrl}
               handleSignOut={handleSignOut}
               signingOut={signingOut}
               error={error}

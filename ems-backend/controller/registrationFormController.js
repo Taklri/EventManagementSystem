@@ -1,7 +1,10 @@
 import mongoose from "mongoose";
 import Event from "../models/Event.js";
+import EventRegistration from "../models/EventRegistration.js";
 import RegistrationForm from "../models/RegistrationForm.js";
+import User from "../models/User.js";
 import { normalizeRegistrationForm } from "../utils/registrationForm.js";
+import { createRegistrationResponsesWorkbook } from "../services/registrationFormExportService.js";
 
 const parsePage = (value, fallback, max = 100) => {
   if (value === undefined) return fallback;
@@ -130,5 +133,161 @@ const setArchived = (archived) => async (req, res) => {
 
 export const archiveRegistrationForm = setArchived(true);
 export const unarchiveRegistrationForm = setArchived(false);
+
+const responsePage = (value, fallback, max = 100) => {
+  if (value === undefined) return fallback;
+  if (!/^\d+$/.test(String(value))) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= max ? parsed : null;
+};
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const responseStudentSelect =
+  "firstName middleName lastName studentId program yearLevel";
+
+const responsePayload = (response) => ({
+  _id: response._id,
+  status: response.status,
+  submittedAt: response.submittedAt || null,
+  registeredAt: response.registeredAt || null,
+  cancelledAt: response.cancelledAt || null,
+  formVersion: response.formVersion || 1,
+  answers: response.answers || [],
+  student: response.student
+    ? {
+        name: [
+          response.student.firstName,
+          response.student.middleName,
+          response.student.lastName,
+        ]
+          .filter(Boolean)
+          .join(" "),
+        studentId: response.student.studentId,
+        program: response.student.program,
+        yearLevel: response.student.yearLevel,
+      }
+    : null,
+  event: response.event
+    ? {
+        _id: response.event._id,
+        title: response.event.title,
+        startDate: response.event.startDate,
+        endDate: response.event.endDate,
+      }
+    : null,
+});
+
+const findFormResponseRows = async ({ formId, search = "" }) => {
+  const events = await Event.find({ registrationFormId: formId })
+    .select("_id")
+    .lean();
+  if (!events.length) return [];
+
+  let matchingStudentIds;
+  if (search) {
+    const pattern = new RegExp(escapeRegex(search), "i");
+    const students = await User.find({
+      $or: [
+        { studentId: pattern },
+        { firstName: pattern },
+        { middleName: pattern },
+        { lastName: pattern },
+        { program: pattern },
+        { yearLevel: pattern },
+      ],
+    })
+      .select("_id")
+      .lean();
+    matchingStudentIds = students.map((student) => student._id);
+  }
+
+  const filter = {
+    event: { $in: events.map((event) => event._id) },
+    ...(matchingStudentIds ? { student: { $in: matchingStudentIds } } : {}),
+  };
+  return EventRegistration.find(filter)
+    .sort({ submittedAt: -1, createdAt: -1, _id: -1 })
+    .populate("student", responseStudentSelect)
+    .populate("event", "title startDate endDate");
+};
+
+const getFormForResponses = async (id) => {
+  if (!mongoose.isValidObjectId(id)) return { error: { status: 400, message: "Registration form id is not valid" } };
+  const form = await RegistrationForm.findById(id);
+  if (!form) return { error: { status: 404, message: "Registration form not found" } };
+  return { form };
+};
+
+export const getRegistrationFormResponses = async (req, res) => {
+  const result = await getFormForResponses(req.params.id);
+  if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+  const page = responsePage(req.query.page, 1);
+  const limit = responsePage(req.query.limit, 20, 100);
+  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  if (!page || !limit || search.length > 100) return res.status(400).json({ message: "Invalid response list filters" });
+  try {
+    const rows = await findFormResponseRows({ formId: result.form._id, search });
+    const total = rows.length;
+    const pagedRows = rows.slice((page - 1) * limit, page * limit);
+    const totalPages = Math.ceil(total / limit);
+    return res.status(200).json({
+      form: formPayload(result.form),
+      responses: pagedRows.map(responsePayload),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+      },
+    });
+  } catch (error) {
+    console.error("Registration form responses failed", error);
+    return res.status(500).json({ message: "Unable to load registration form responses" });
+  }
+};
+
+export const getRegistrationFormResponseById = async (req, res) => {
+  const result = await getFormForResponses(req.params.id);
+  if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+  if (!mongoose.isValidObjectId(req.params.responseId)) return res.status(400).json({ message: "Registration response id is not valid" });
+  try {
+    const rows = await EventRegistration.find({
+      _id: req.params.responseId,
+      event: { $in: (await Event.find({ registrationFormId: result.form._id }).select("_id").lean()).map((event) => event._id) },
+    })
+      .limit(1)
+      .populate("student", responseStudentSelect)
+      .populate("event", "title startDate endDate");
+    if (!rows[0]) return res.status(404).json({ message: "Registration response not found" });
+    return res.status(200).json({ form: formPayload(result.form), response: responsePayload(rows[0]) });
+  } catch (error) {
+    console.error("Registration form response read failed", error);
+    return res.status(500).json({ message: "Unable to load registration response" });
+  }
+};
+
+export const exportRegistrationFormResponses = async (req, res) => {
+  const result = await getFormForResponses(req.params.id);
+  if (result.error) return res.status(result.error.status).json({ message: result.error.message });
+  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  if (search.length > 100) return res.status(400).json({ message: "Invalid response export filters" });
+  try {
+    const rows = await findFormResponseRows({ formId: result.form._id, search });
+    const workbook = createRegistrationResponsesWorkbook({
+      form: result.form,
+      responses: rows.map(responsePayload),
+    });
+    const safeName = result.form.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "registration-form";
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=\"${safeName}-responses.xlsx\"`);
+    return res.status(200).send(workbook);
+  } catch (error) {
+    console.error("Registration form response export failed", error);
+    return res.status(500).json({ message: "Unable to export registration form responses" });
+  }
+};
 
 export { formPayload };

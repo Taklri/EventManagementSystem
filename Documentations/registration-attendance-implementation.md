@@ -42,7 +42,7 @@ Attendance is available only when registration is required. The admin displays a
 | GET | `/api/admin/events/:id/attendance` | Admin | Attendance totals, including archived event history |
 | GET | `/api/admin/events/:id/attendance/records` | Admin | Attendance records, including archived event history |
 
-The student preview and confirmation endpoints accept `{ "token": "..." }`. QR sessions expire after at most 15 minutes and cannot outlive the event's attendance window. Time in opens 30 minutes before event start and closes at event end. Time out closes 30 minutes after event end. Archived and open events cannot generate or use attendance QR codes. Admins can still read historical totals after archive.
+The student preview and confirmation endpoints accept `{ "token": "..." }`. QR sessions expire after at most 15 minutes and cannot outlive the event's attendance window. Time in opens when the event starts and closes at event end. Time out closes 30 minutes after event end. Archived and open events cannot generate or use attendance QR codes. Admins can still read historical totals after archive.
 
 ## Verification scope
 

@@ -244,6 +244,14 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                       <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-semibold text-emerald-700">
                         Attendance complete. Your time in and time out are saved.
                       </p>
+                    ) : !attendance?.timeIn && event.status === 'Coming Soon' ? (
+                      <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs leading-5 text-slate-600">
+                        Time in opens when the event starts on {attendanceTime(event.startDate)}.
+                      </p>
+                    ) : !attendance?.timeIn && event.status !== 'Ongoing' ? (
+                      <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs leading-5 text-slate-600">
+                        Time in is closed for this event.
+                      </p>
                     ) : (
                       <Button asChild className="mt-4 w-full">
                         <Link to={`/attendance/${id}`}>

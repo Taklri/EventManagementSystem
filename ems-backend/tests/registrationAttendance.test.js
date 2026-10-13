@@ -7,7 +7,7 @@ import EventAttendance from "../models/EventAttendance.js";
 import EventRegistration from "../models/EventRegistration.js";
 import User from "../models/User.js";
 import { registerForEvent } from "../controller/eventRegistrationController.js";
-import { previewAttendance, recordAttendance } from "../controller/eventAttendanceController.js";
+import { getStudentAttendance, previewAttendance, recordAttendance } from "../controller/eventAttendanceController.js";
 import { createEvent } from "../controller/createEventController.js";
 import { normalizeRegistrationForm, validateRegistrationAnswers } from "../utils/registrationForm.js";
 import eventRoutes from "../routes/EventRoutes/eventRoutes.js";
@@ -172,7 +172,7 @@ test("attendance rejects expired, wrong-event, and early QR scans", async () => 
     assert.equal(wrongEvent.statusCode, 400);
 
     req.body.token = jwt.sign({ purpose: "event-attendance", eventId }, process.env.JWT_SECRET_KEY, { expiresIn: 60 });
-    scheduled.startDate = new Date(Date.now() + 3_600_000);
+    scheduled.startDate = new Date(Date.now() + 5 * 60_000);
     scheduled.endDate = new Date(Date.now() + 7_200_000);
     const early = response();
     await previewAttendance(req, early);
@@ -182,6 +182,30 @@ test("attendance rejects expired, wrong-event, and early QR scans", async () => 
     if (oldSecret === undefined) delete process.env.JWT_SECRET_KEY;
     else process.env.JWT_SECRET_KEY = oldSecret;
   }
+});
+
+test("camera attendance stays closed until the event starts", async () => {
+  const scheduled = {
+    ...event(),
+    startDate: new Date(Date.now() + 5 * 60_000),
+    endDate: new Date(Date.now() + 3_600_000),
+  };
+  mock.method(Event, "findById", async () => scheduled);
+  mock.method(EventRegistration, "findOne", async () => ({ status: "registered" }));
+  mock.method(EventAttendance, "findOne", async () => null);
+  const req = { params: { id: eventId }, user: { sub: studentId }, body: {} };
+
+  const status = response();
+  await getStudentAttendance(req, status);
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.body.canSubmit, false);
+  assert.equal(status.body.action, "timeIn");
+  assert.match(status.body.message, /not open yet/);
+
+  const submission = response();
+  await recordAttendance(req, submission);
+  assert.equal(submission.statusCode, 400);
+  assert.match(submission.body.message, /not open yet/);
 });
 
 test("attendance rejects open events and waitlisted students before saving", async () => {

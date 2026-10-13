@@ -156,7 +156,7 @@ The browser never submits the student name or ID as trusted data. The server der
 ### Attendance timing defaults
 
 - QR sessions may be generated before the event.
-- Time-in is accepted from 30 minutes before the event start through the event end.
+- Time-in is accepted from the event start through the event end.
 - Time-out is accepted after time-in until 30 minutes after the event end.
 - Time-in after the event has ended is rejected.
 - Time-out before time-in is impossible because no attendance record exists yet.

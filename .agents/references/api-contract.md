@@ -39,7 +39,7 @@
 | `PATCH` | `/api/notifications/:id/read` | Bearer access token + `student` role | Mark one of that student's notifications as read. |
 | `GET` | `/api/admin/dashboard` | Bearer access token + `admin` role | Return event metrics and recently updated non-archived events for the admin dashboard. |
 
-Student registration and attendance notifications are created only after those actions succeed. Creating an event notifies every current student that the event is available. `GET /api/notifications` returns `{ notifications, unreadCount }`. Each notification includes `_id`, `type`, `title`, `message`, `event`, `readAt`, and `createdAt`. An admin token returns `403`. A notification id that does not belong to the student returns `404`.
+Student registration and attendance notifications are created only after those actions succeed. Creating an event notifies every current student that the event is available. `GET /api/notifications` returns `{ notifications, unreadCount }`. Each notification includes `_id`, `type`, `title`, `message`, `event`, `eventDetails`, `readAt`, and `createdAt`. `event` remains the event id used for navigation. `eventDetails` is `null` when the event no longer exists; otherwise it includes `id`, `title`, `description`, `location`, `startDate`, `endDate`, `eventType`, `organizerName`, `imageUrl`, `isArchived`, and the computed `status`. An admin token returns `403`. A notification id that does not belong to the student returns `404`.
 
 Registration defaults new users to the `student` role. The current user route does not expose the `getUsers` controller as an endpoint.
 

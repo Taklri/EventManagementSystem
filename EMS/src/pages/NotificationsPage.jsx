@@ -1,16 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Bell, CalendarPlus, CheckCheck, ClipboardCheck, Ticket, UserRoundX } from 'lucide-react';
+import { CalendarDays, CheckCheck, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { notificationsApi } from '../lib/api';
-
-const typeIcons = {
-  event_created: CalendarPlus,
-  registered: Ticket,
-  waitlisted: Ticket,
-  registration_cancelled: UserRoundX,
-  attendance: ClipboardCheck,
-};
+import { formatEventSchedule } from '../lib/eventFormatting';
 
 const formatTime = (value) => {
   const date = new Date(value);
@@ -92,8 +85,8 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto max-w-5xl">
+      <header className="flex flex-wrap items-end justify-between gap-5">
         <div>
           <p className="text-xs font-medium uppercase tracking-widest text-slate-500">Your inbox</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">Notifications</h1>
@@ -113,58 +106,63 @@ export default function NotificationsPage() {
       </header>
 
       {state.loading ? (
-        <div role="status" className="mt-8 space-y-3">
+        <div role="status" className="mt-8 space-y-4">
+          <span className="sr-only">Loading notifications…</span>
           {[1, 2, 3].map((item) => (
-            <div key={item} className="h-24 animate-pulse rounded-2xl bg-white" />
+            <div key={item} className="h-20 animate-pulse" />
           ))}
         </div>
       ) : state.error && notifications.length === 0 ? (
-        <section role="alert" className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">
-          {state.error}
-        </section>
+        <p role="alert" className="mt-8 text-sm text-red-800">{state.error}</p>
       ) : notifications.length === 0 ? (
-        <section className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-          <Bell className="mx-auto text-slate-400" size={28} aria-hidden="true" />
-          <h2 className="mt-4 text-xl font-semibold">No notifications yet</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+        <section className="mt-12">
+          <h2 className="text-xl font-semibold">No notifications yet</h2>
+          <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
             New events and updates about your registrations will show up here.
           </p>
         </section>
       ) : (
-        <ul className="mt-8 space-y-3">
+        <ul className="mt-8 space-y-4">
           {state.error && (
-            <li role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {state.error}
-            </li>
+            <li role="alert" className="px-4 py-4 text-sm text-red-800 sm:px-6">{state.error}</li>
           )}
           {notifications.map((notification) => {
-            const Icon = typeIcons[notification.type] || Bell;
             const unread = !notification.readAt;
+            const details = notification.eventDetails;
             return (
               <li key={notification._id}>
                 <button
                   type="button"
                   onClick={() => openNotification(notification)}
                   disabled={openingId === notification._id}
-                  className={`flex w-full items-start gap-4 rounded-2xl border bg-white p-4 text-left transition hover:border-nu-navy/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy disabled:opacity-70 ${unread ? 'border-nu-navy/20' : 'border-slate-200'}`}
+                  className={`flex w-full flex-col gap-1 rounded-xl border-l-4 bg-white px-4 py-5 text-left shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy disabled:opacity-70 sm:px-6 ${unread ? 'border-nu-navy' : 'border-transparent'}`}
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-nu-navy">
-                    <Icon size={18} aria-hidden="true" />
+                  <span className="flex items-center justify-between gap-4">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className={`text-sm font-medium ${unread ? 'text-nu-navy' : 'text-slate-500'}`}>{notification.title}</span>
+                      {unread && <span className="rounded-full bg-nu-navy px-2 py-0.5 text-[11px] font-semibold text-white">New</span>}
+                    </span>
+                    <time className="shrink-0 text-xs text-slate-400" dateTime={notification.createdAt}>
+                      {formatTime(notification.createdAt)}
+                    </time>
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-nu-dark">{notification.title}</span>
-                      {unread && (
-                        <span className="rounded-full bg-nu-navy px-2 py-0.5 text-[11px] font-semibold text-white">
-                          Unread
+                  {details ? (
+                    <>
+                      <span className={`block text-base text-nu-dark ${unread ? 'font-bold' : 'font-semibold'}`}>{details.title}</span>
+                      <span className="mt-1 flex items-start gap-2 text-sm leading-6 text-slate-600">
+                        <CalendarDays size={14} className="mt-1 shrink-0" aria-hidden="true" />
+                        {formatEventSchedule(details.startDate, details.endDate)}
+                      </span>
+                      {details.location && (
+                        <span className="flex items-start gap-2 text-sm leading-6 text-slate-600">
+                          <MapPin size={14} className="mt-1 shrink-0" aria-hidden="true" />
+                          {details.location}
                         </span>
                       )}
-                    </span>
-                    <span className="mt-1 block text-sm leading-6 text-slate-600">{notification.message}</span>
-                    <span className="mt-2 block text-xs text-slate-500">
-                      <time dateTime={notification.createdAt}>{formatTime(notification.createdAt)}</time>
-                    </span>
-                  </span>
+                    </>
+                  ) : (
+                    <span className="block text-sm leading-6 text-slate-600">{notification.message}</span>
+                  )}
                 </button>
               </li>
             );

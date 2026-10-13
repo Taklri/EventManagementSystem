@@ -11,6 +11,8 @@ import {
 } from '@mui/material';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { adminApi } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import {
   sanitizeName,
   sanitizeStudentId,
@@ -18,8 +20,6 @@ import {
   validateStudentId,
 } from '../lib/authValidation';
 
-// Frontend only: student records will come from the future backend integration.
-// Backend handoff: see EMS/docs/student-management-handoff.md.
 const ROWS_PER_PAGE = 10;
 
 // colors for the circle with the initials
@@ -123,8 +123,12 @@ function EditStudentModal({ student, students, onClose, onSave }) {
 
   const [errors, setErrors] = useState({});
 
-  function handleSubmit(event) {
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  async function handleSubmit(event) {
     event.preventDefault();
+    if (saving) return;
 
     const newErrors = {};
 
@@ -171,7 +175,16 @@ function EditStudentModal({ student, students, onClose, onSave }) {
       eventsJoined: student.eventsJoined,
     };
 
-    onSave(updated);
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onSave(updated);
+    } catch (error) {
+      setSaveError(error.message);
+      if (error.field) setErrors({ [error.field]: error.message });
+    } finally {
+      setSaving(false);
+    }
   }
 
   // red border when a box has an error
@@ -194,8 +207,10 @@ function EditStudentModal({ student, students, onClose, onSave }) {
   }
 
   return (
-    <Modal title="Edit student" onClose={onClose}>
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+    <Modal title="Edit student" onClose={() => { if (!saving) onClose(); }}>
+      <form onSubmit={handleSubmit} noValidate>
+        <fieldset disabled={saving} className="space-y-4">
+        {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
         <div>
           <label htmlFor="edit-student-id" className={modalLabelClass}>
             Student ID
@@ -286,16 +301,41 @@ function EditStudentModal({ student, students, onClose, onSave }) {
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Save changes</Button>
+          <Button type="submit">{saving ? 'Saving?' : 'Save changes'}</Button>
         </div>
+        </fieldset>
       </form>
     </Modal>
   );
 }
 
 function AdminStudentsPage() {
-  // Integration point: populate this empty list with the future student-list request.
+  const { accessToken } = useAuth();
   const [students, setStudents] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    let active = true;
+    adminApi.students(accessToken).then(({ users }) => {
+      if (active) { setStudents(users); setLoading(false); setLoadError(''); }
+    }).catch((error) => {
+      if (active) {
+        setLoading(false);
+        setLoadError(error.status === 401 ? 'Your session expired. Sign in again.'
+          : error.status === 403 ? 'Administrator access is required.' : error.message);
+      }
+    });
+    return () => { active = false; };
+  }, [accessToken, reload]);
+
+  function refreshStudents() {
+    setLoading(true);
+    setLoadError('');
+    setPage(0);
+    setReload((value) => value + 1);
+  }
 
   // Search and pagination
   const [search, setSearch] = useState('');
@@ -320,20 +360,20 @@ function AdminStudentsPage() {
   const start = page * ROWS_PER_PAGE;
   const visible = filtered.slice(start, start + ROWS_PER_PAGE);
 
-  function handleSave(updated) {
-    // Frontend only: update React state. Changes do not persist after refresh.
-    // Integration point: save through the future API before updating this list.
-    const newList = [];
-    for (let i = 0; i < students.length; i++) {
-      if (students[i].id === updated.id) {
-        newList.push(updated);
-      } else {
-        newList.push(students[i]);
-      }
+  async function handleSave(updated) {
+    const { studentId, firstName, middleName, lastName } = updated;
+    let result;
+    try {
+      result = await adminApi.updateStudent(updated.id, { studentId, firstName, middleName, lastName }, accessToken);
+    } catch (error) {
+      if (error.status === 401) error.message = 'Your session expired. Sign in again.';
+      if (error.status === 403) error.message = 'Administrator access is required.';
+      throw error;
     }
-    setStudents(newList);
+    setStudents((current) => current.map((student) => student.id === updated.id
+      ? { ...student, ...result.user, eventsJoined: student.eventsJoined } : student));
     setEditing(null);
-    setMessage('Student information updated for this preview. Changes reset on refresh.');
+    setMessage('Student information updated.');
   }
 
   const statCards = [
@@ -373,7 +413,14 @@ function AdminStudentsPage() {
   }
 
   let tableContent;
-  if (filtered.length === 0) {
+  if (loading) {
+    tableContent = <p role="status" className="px-5 py-16 text-center text-sm text-slate-500">Loading students?</p>;
+  } else if (loadError) {
+    tableContent = <div className="px-5 py-16 text-center">
+      <p role="alert" className="mb-4 text-sm text-red-700">{loadError}</p>
+      <Button variant="outline" onClick={refreshStudents}>Try again</Button>
+    </div>;
+  } else if (filtered.length === 0) {
     tableContent = (
       <div className="px-5 py-16 text-center">
         <p className="font-semibold text-nu-dark">{keyword ? 'No students found' : 'No students yet'}</p>
@@ -415,7 +462,7 @@ function AdminStudentsPage() {
                       <span
                         className={
                           'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ' +
-                          AVATAR_COLORS[student.id % AVATAR_COLORS.length]
+                          AVATAR_COLORS[parseInt(student.id.slice(-2), 16) % AVATAR_COLORS.length]
                         }
                       >
                         {getInitials(student)}
@@ -486,7 +533,7 @@ function AdminStudentsPage() {
           <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-4">
             <p className="text-xs text-slate-500">{card.label}</p>
             <p className={'mt-1 text-2xl font-bold ' + card.color}>
-              {card.value.toLocaleString()}
+              {loading || loadError ? '?' : card.value.toLocaleString()}
             </p>
           </div>
         ))}
@@ -517,8 +564,9 @@ function AdminStudentsPage() {
               className="pl-10"
             />
           </label>
+          <Button variant="outline" onClick={refreshStudents} disabled={loading}>Refresh</Button>
           <p className="text-sm text-slate-500 sm:ml-auto" role="status">
-            {filtered.length.toLocaleString()} {filtered.length === 1 ? 'student' : 'students'}
+            {loading || loadError ? '?' : `${filtered.length.toLocaleString()} ${filtered.length === 1 ? 'student' : 'students'}`}
           </p>
         </div>
 

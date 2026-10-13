@@ -35,6 +35,7 @@ export const apiRequest = async (path, { body, token, timeoutMs = 15000, ...opti
     const error = new Error(data.message || 'The request could not be completed.');
     error.status = response.status;
     error.field = data.field;
+    error.issues = Array.isArray(data.issues) ? data.issues : undefined;
     error.retryAfterSeconds =
       data.retryAfterSeconds || Number(response.headers.get('Retry-After')) || undefined;
     throw error;

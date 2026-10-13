@@ -75,6 +75,12 @@ const parseEventDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const parseAgendaDate = (value) => {
+  if (value instanceof Date) return parseEventDate(value);
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return null;
+  return parseEventDate(value);
+};
+
 const getCampusDay = (date) => {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Manila",
@@ -134,7 +140,15 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
     ["requirements", parsedRequirements],
     ["reminders", parsedReminders],
   ]) {
-    if (value?.error) return { error: value.error, field };
+    if (value?.error) {
+      return {
+        error: value.error,
+        field,
+        ...(field === "agenda"
+          ? { issues: [{ path: "agenda", message: value.error }] }
+          : {}),
+      };
+    }
   }
 
   const tags = normalizeStringList(parsedTags, "Tags", 8, 40);
@@ -173,32 +187,114 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
     });
   }
 
-  if (!Array.isArray(parsedAgenda) || parsedAgenda.length > 40) {
-    return { error: "Agenda can have up to 40 items", field: "agenda" };
+  if (!Array.isArray(parsedAgenda)) {
+    const message = "Agenda must be an array";
+    return { error: message, field: "agenda", issues: [{ path: "agenda", message }] };
+  }
+  if (parsedAgenda.length > 40) {
+    const message = "Agenda can have up to 40 items";
+    return { error: message, field: "agenda", issues: [{ path: "agenda", message }] };
   }
   const agenda = [];
-  for (const item of parsedAgenda) {
+  const agendaIssues = [];
+  for (const [index, item] of parsedAgenda.entries()) {
     if (!item || typeof item !== "object") {
-      return { error: "Each agenda item must be an object", field: "agenda" };
+      agendaIssues.push({
+        path: `agenda.${index}`,
+        message: "Each program item must be an object.",
+      });
+      continue;
     }
     const title = typeof item.title === "string" ? item.title.trim() : "";
     const description = typeof item.description === "string" ? item.description.trim() : "";
-    const startDate = parseEventDate(item.startDate);
-    const endDate = parseEventDate(item.endDate);
-    const speakerKeysForItem = Array.isArray(item.speakerKeys) ? item.speakerKeys : [];
-    if (title.length < 2 || title.length > 160 || description.length > 500) {
-      return { error: "Agenda titles must be 2 to 160 characters long", field: "agenda" };
+    const startDate = parseAgendaDate(item.startDate);
+    const endDate = parseAgendaDate(item.endDate);
+    const speakerKeysForItem = item.speakerKeys;
+    let itemHasIssues = false;
+    if (title.length < 2 || title.length > 160) {
+      agendaIssues.push({
+        path: `agenda.${index}.title`,
+        message: "Program title must be 2 to 160 characters long.",
+      });
+      itemHasIssues = true;
     }
-    if (!startDate || !endDate || endDate <= startDate) {
-      return { error: "Each agenda item must have valid times and end after it starts", field: "agenda" };
+    if (item.description !== undefined && typeof item.description !== "string") {
+      agendaIssues.push({
+        path: `agenda.${index}.description`,
+        message: "Program description must be text.",
+      });
+      itemHasIssues = true;
+    } else if (description.length > 500) {
+      agendaIssues.push({
+        path: `agenda.${index}.description`,
+        message: "Program description must be 500 characters or fewer.",
+      });
+      itemHasIssues = true;
     }
-    if ((rangeStart && startDate < rangeStart) || (rangeEnd && endDate > rangeEnd)) {
-      return { error: "Agenda times must fall within the event schedule", field: "agenda" };
+    if (!startDate) {
+      agendaIssues.push({
+        path: `agenda.${index}.startDate`,
+        message: "Choose a valid program start date and time.",
+      });
+      itemHasIssues = true;
     }
-    if (speakerKeysForItem.some((key) => !speakerKeys.has(key))) {
-      return { error: "Agenda items can only reference speakers in this event", field: "agenda" };
+    if (!endDate) {
+      agendaIssues.push({
+        path: `agenda.${index}.endDate`,
+        message: "Choose a valid program end date and time.",
+      });
+      itemHasIssues = true;
+    }
+    if (startDate && endDate && endDate <= startDate) {
+      agendaIssues.push({
+        path: `agenda.${index}.endDate`,
+        message: "Program end must be after its start.",
+      });
+      itemHasIssues = true;
+    }
+    if (startDate && endDate && rangeStart && startDate < rangeStart) {
+      agendaIssues.push({
+        path: `agenda.${index}.startDate`,
+        message: "Program start must stay inside the event schedule.",
+      });
+      itemHasIssues = true;
+    }
+    if (startDate && endDate && rangeEnd && endDate > rangeEnd) {
+      agendaIssues.push({
+        path: `agenda.${index}.endDate`,
+        message: "Program end must stay inside the event schedule.",
+      });
+      itemHasIssues = true;
+    }
+    if (!Array.isArray(speakerKeysForItem)) {
+      agendaIssues.push({
+        path: `agenda.${index}.speakerKeys`,
+        message: "Program speakers must be an array.",
+      });
+      itemHasIssues = true;
+    } else {
+      speakerKeysForItem.forEach((key) => {
+        if (typeof key !== "string" || !speakerKeys.has(key)) {
+          agendaIssues.push({
+            path: `agenda.${index}.speakerKeys`,
+            message: "Choose speakers from this event's speaker list.",
+          });
+          itemHasIssues = true;
+        }
+      });
+    }
+    if (itemHasIssues) {
+      continue;
     }
     agenda.push({ title, ...(description ? { description } : {}), startDate, endDate, speakerKeys: speakerKeysForItem });
+  }
+
+  if (agendaIssues.length) {
+    return {
+      error: "Please fix the highlighted agenda items.",
+      field: "agenda",
+      issues: agendaIssues,
+    };
   }
 
   const registrationMode = body.registrationMode === undefined
@@ -281,7 +377,13 @@ export const createEvent = async (req, res) => {
     }
 
     const structured = readStructuredFields(body, { rangeStart: start, rangeEnd: end });
-    if (structured.error) return res.status(400).json({ message: structured.error, field: structured.field });
+    if (structured.error) {
+      return res.status(400).json({
+        message: structured.error,
+        field: structured.field,
+        ...(structured.issues ? { issues: structured.issues } : {}),
+      });
+    }
 
     let image;
     const speakerImages = [];
@@ -594,7 +696,13 @@ export const updateEvent = async (req, res) => {
       rangeStart: event.startDate,
       rangeEnd: event.endDate,
     });
-    if (structured.error) return res.status(400).json({ message: structured.error, field: structured.field });
+    if (structured.error) {
+      return res.status(400).json({
+        message: structured.error,
+        field: structured.field,
+        ...(structured.issues ? { issues: structured.issues } : {}),
+      });
+    }
 
     const removeSpeakerImageKeys = parseJsonField(
       req.body?.removeSpeakerImageKeys,

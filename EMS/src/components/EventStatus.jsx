@@ -1,4 +1,4 @@
-export default function EventStatus({ status, showDot = true }) {
+export default function EventStatus({ status, showDot = false }) {
   const tone =
     status === 'Ongoing'
       ? 'bg-emerald-50 text-emerald-800'

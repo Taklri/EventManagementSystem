@@ -110,7 +110,7 @@ test('registration rejects malformed types, IDs, names, emails, and weak/oversiz
   for (const changes of [
     { studentId: 2026123456 }, { studentId: '2026123456' }, { studentId: '2026-12345' },
     { firstName: 'Ana1' }, { lastName: 'Smith@' }, { middleName: 123 }, { firstName: ' ' },
-    { yearLevel: '' }, { yearLevel: 'x'.repeat(41) }, { program: 'Unknown program' }, { program: 123 },
+    { yearLevel: '' }, { yearLevel: '8th Year' }, { yearLevel: 'x'.repeat(41) }, { program: 'Unknown program' }, { program: 123 },
     { email: 'a@b..com' }, { email: '.name@example.invalid' }, { email: 'a..b@example.invalid' }, { email: ['student@example.invalid'] },
     { password: 'short' }, { password: 'abcdefgh' }, { password: 'Abcdefg1 ' }, { password: `Aa1!${'x'.repeat(72)}` },
   ]) {

@@ -1,6 +1,15 @@
 export const emailPattern = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?)+$/i;
 export const studentIdPattern = /^\d{4}-\d{6}$/;
 export const namePattern = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u;
+export const YEAR_LEVEL_OPTIONS = [
+  '1st Year',
+  '2nd Year',
+  '3rd Year',
+  '4th Year',
+  '5th Year',
+  '6th Year',
+  '7th Year',
+];
 export const PROGRAM_OPTIONS = [
   'Bachelor of Science in Accountancy',
   'Bachelor of Science in Business Administration (Majors in Financial Management & Marketing Management)',
@@ -44,7 +53,7 @@ export function validateStudentId(value) {
 export function validateYearLevel(value) {
   const trimmed = value.trim();
   if (!trimmed) return 'Year level is required.';
-  if (trimmed.length > 40) return 'Year level must be 40 characters or fewer.';
+  if (!YEAR_LEVEL_OPTIONS.includes(trimmed)) return 'Select a valid year level.';
   return '';
 }
 

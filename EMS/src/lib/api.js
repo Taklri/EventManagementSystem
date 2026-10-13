@@ -76,7 +76,8 @@ export const profileApi = {
 };
 
 export const notificationsApi = {
-  list: (token) => apiRequest('/notifications', { token }),
+  list: (token, { page = 1, limit = 10 } = {}) =>
+    apiRequest(`/notifications?${new URLSearchParams({ page: String(page), limit: String(limit) })}`, { token }),
   markRead: (id, token) =>
     apiRequest(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', token }),
   markAllRead: (token) => apiRequest('/notifications/read-all', { method: 'PATCH', token }),

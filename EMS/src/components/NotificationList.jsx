@@ -21,6 +21,7 @@ export default function NotificationList({
   description,
   emptyText,
   eventPath,
+  destination,
   changeEvent,
   titleClassName = 'mt-2 text-3xl font-bold tracking-tight',
 }) {
@@ -28,18 +29,27 @@ export default function NotificationList({
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
   const [state, setState] = useState({ loading: true, error: '' });
   const [openingId, setOpeningId] = useState('');
   const [markingAll, setMarkingAll] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setState((current) => ({ ...current, loading: true }));
     notificationsApi
-      .list(accessToken)
+      .list(accessToken, { page })
       .then((data) => {
         if (!active) return;
+        const nextPagination = data.pagination;
+        if (nextPagination?.totalPages > 0 && page > nextPagination.totalPages) {
+          setPage(nextPagination.totalPages);
+          return;
+        }
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
+        setPagination(nextPagination || null);
         setState({ loading: false, error: '' });
       })
       .catch((error) => {
@@ -48,7 +58,7 @@ export default function NotificationList({
     return () => {
       active = false;
     };
-  }, [accessToken]);
+  }, [accessToken, page]);
 
   function publishUnread(count) {
     window.dispatchEvent(new CustomEvent(changeEvent, { detail: { unreadCount: count } }));
@@ -69,7 +79,9 @@ export default function NotificationList({
         setUnreadCount(count);
         publishUnread(count);
       }
-      if (notification.event) navigate(`${eventPath}/${notification.event}`);
+      if (notification.event) {
+        navigate(destination ? destination(notification) : `${eventPath}/${notification.event}`);
+      }
     } catch (error) {
       setState((current) => ({ ...current, error: error.message || 'Unable to update notification.' }));
     } finally {
@@ -178,6 +190,29 @@ export default function NotificationList({
             );
           })}
         </ul>
+      )}
+      {pagination && pagination.totalPages > 1 && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <span>Page {pagination.page} of {pagination.totalPages}</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={!pagination.hasPrevious || state.loading}
+              onClick={() => setPage((current) => current - 1)}
+              className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 font-semibold text-nu-navy hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={!pagination.hasNext || state.loading}
+              onClick={() => setPage((current) => current + 1)}
+              className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 font-semibold text-nu-navy hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

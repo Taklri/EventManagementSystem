@@ -37,15 +37,36 @@ const notificationPayload = (notification) => {
   };
 };
 
+const pageNumber = (value, fallback, max) => {
+  if (value === undefined) return fallback;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1 || number > max) return null;
+  return number;
+};
+
 export const getNotifications = async (req, res) => {
   try {
-    const [notifications, unreadCount] = await Promise.all([
-      Notification.find({ user: req.user.sub }).sort({ createdAt: -1, _id: -1 }).limit(100).populate("event", eventFields),
+    const page = pageNumber(req.query.page, 1, 1000000);
+    const limit = pageNumber(req.query.limit, 10, 50);
+    if (!page || !limit) return res.status(400).json({ message: "Invalid notification page" });
+    const filter = { user: req.user.sub };
+    const [notifications, total, unreadCount] = await Promise.all([
+      Notification.find(filter).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).populate("event", eventFields),
+      Notification.countDocuments(filter),
       Notification.countDocuments({ user: req.user.sub, readAt: null }),
     ]);
+    const totalPages = Math.ceil(total / limit);
     return res.status(200).json({
       notifications: notifications.map(notificationPayload),
       unreadCount,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+      },
     });
   } catch (error) {
     console.error("Notification list failed");

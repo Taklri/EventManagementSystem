@@ -1,6 +1,23 @@
 export const emailPattern = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?)+$/i;
 export const studentIdPattern = /^\d{4}-\d{6}$/;
 export const namePattern = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u;
+export const PROGRAM_OPTIONS = [
+  'Bachelor of Science in Accountancy',
+  'Bachelor of Science in Business Administration (Majors in Financial Management & Marketing Management)',
+  'Bachelor of Science in Management Accounting',
+  'Bachelor of Science in Hospitality Management',
+  'Bachelor of Science in Tourism Management',
+  'Bachelor of Science in Architecture',
+  'Bachelor of Science in Computer Science',
+  'Bachelor of Science in Information Technology with specialization in Mobile and Web Applications',
+  'Bachelor of Science in Psychology',
+  'Bachelor of Science in Nursing',
+  'Bachelor of Science in Medical Technology',
+  'Doctor of Optometry',
+  'Doctor of Dental Medicine',
+  'Dental Hygiene IV',
+  'Dental Technology NC IV',
+];
 
 export function validateEmail(value) {
   if (!value.trim()) return 'Email is required.';
@@ -22,6 +39,18 @@ export function validateStudentId(value) {
   if (!value.trim()) return 'Student ID is required.';
   if (!studentIdPattern.test(value.trim())) return 'Use the format YYYY-######.';
   return '';
+}
+
+export function validateYearLevel(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return 'Year level is required.';
+  if (trimmed.length > 40) return 'Year level must be 40 characters or fewer.';
+  return '';
+}
+
+export function validateProgram(value) {
+  if (!value) return 'Program is required.';
+  return PROGRAM_OPTIONS.includes(value) ? '' : 'Select a valid program.';
 }
 
 export function validatePassword(value) {

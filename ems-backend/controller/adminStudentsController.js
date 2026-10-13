@@ -1,12 +1,14 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import EventRegistration from '../models/EventRegistration.js';
+import { programValidationError, yearLevelValidationError } from '../utils/authValidation.js';
 
-const fields = '_id studentId firstName middleName lastName email';
+const fields = '_id studentId firstName middleName lastName yearLevel program email';
 const displayStudent = (user, eventsJoined = 0) => ({
   id: String(user._id), studentId: user.studentId,
   firstName: user.firstName, middleName: user.middleName || '',
-  lastName: user.lastName, email: user.email, eventsJoined,
+  lastName: user.lastName, yearLevel: user.yearLevel || '', program: user.program || '',
+  email: user.email, eventsJoined,
 });
 
 const registrationCounts = (ids) => EventRegistration.aggregate([
@@ -31,27 +33,37 @@ export const updateAdminStudent = async (req, res) => {
     return res.status(400).json({ message: 'Invalid student identifier' });
   }
   const body = req.body;
-  const allowed = ['studentId', 'firstName', 'middleName', 'lastName'];
+  const allowed = ['studentId', 'firstName', 'middleName', 'lastName', 'yearLevel', 'program'];
   if (!body || typeof body !== 'object' || Array.isArray(body)
     || Object.keys(body).some((key) => !allowed.includes(key))) {
-    return res.status(400).json({ message: 'Only student ID and name fields may be updated' });
+    return res.status(400).json({ message: 'Only student ID, name, year level, and program fields may be updated' });
   }
   const update = {};
   const namePattern = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u;
-  for (const field of allowed) {
+  for (const field of Object.keys(body)) {
     if (typeof body[field] !== 'string') {
       return res.status(400).json({ message: 'Please provide valid student fields', field });
     }
     update[field] = body[field].trim();
-    if (field === 'studentId' ? !/^\d{4}-\d{6}$/.test(update[field])
-      : update[field].length > 100 || (!(field === 'middleName' && !update[field]) && !namePattern.test(update[field]))) {
-      return res.status(400).json({ message: field === 'studentId'
+    const invalid = field === 'studentId' ? !/^\d{4}-\d{6}$/.test(update[field])
+      : field === 'yearLevel' ? Boolean(yearLevelValidationError(update[field]))
+        : field === 'program' ? Boolean(programValidationError(update[field]))
+          : update[field].length > 100 || (!(field === 'middleName' && !update[field]) && !namePattern.test(update[field]));
+    if (invalid) {
+      const message = field === 'studentId'
         ? 'Student ID must use the format YYYY-######'
-        : 'Names must contain letters, spaces, apostrophes, or hyphens (maximum 100 characters)', field });
+        : field === 'yearLevel'
+          ? 'Year level must be 40 characters or fewer'
+          : field === 'program'
+            ? 'Please select a valid program'
+            : 'Names must contain letters, spaces, apostrophes, or hyphens (maximum 100 characters)';
+      return res.status(400).json({ message, field });
     }
   }
   try {
-    const duplicate = await User.exists({ studentId: update.studentId, _id: { $ne: req.params.id } });
+    const duplicate = update.studentId
+      ? await User.exists({ studentId: update.studentId, _id: { $ne: req.params.id } })
+      : false;
     if (duplicate) return res.status(409).json({ message: 'This Student ID already belongs to another user.', field: 'studentId' });
     const student = await User.findOneAndUpdate(
       { _id: req.params.id, role: 'student' }, { $set: update },

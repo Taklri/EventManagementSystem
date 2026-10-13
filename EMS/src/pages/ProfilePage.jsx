@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, Eye, EyeOff, Lock, Mail, Pencil, UserRound, X } from 'lucide-react';
+import { Camera, Eye, EyeOff, GraduationCap, Lock, Mail, Pencil, UserRound, X } from 'lucide-react';
 import { profileApi } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { sanitizeName, sanitizeStudentId, validateEmail, validateName, validatePassword, validateStudentId } from '../lib/authValidation';
+import { PROGRAM_OPTIONS, YEAR_LEVEL_OPTIONS, sanitizeName, sanitizeStudentId, validateEmail, validateName, validatePassword, validateProgram, validateStudentId, validateYearLevel } from '../lib/authValidation';
 
 const fieldClass = (invalid) =>
   `w-full rounded-lg border bg-white px-3 py-2.5 text-sm outline-none focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/15 ${invalid ? 'border-red-500' : 'border-slate-200'}`;
@@ -160,7 +160,7 @@ const Dialog = ({ title, onClose, children }) => {
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center" onMouseDown={onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -215,7 +215,7 @@ export default function ProfilePage() {
   const [attempt, setAttempt] = useState(0);
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
-  const [form, setForm] = useState({ firstName: '', middleName: '', lastName: '', studentId: '', email: '', currentPassword: '' });
+  const [form, setForm] = useState({ firstName: '', middleName: '', lastName: '', studentId: '', yearLevel: '', program: '', email: '', currentPassword: '' });
   const [touched, setTouched] = useState({});
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
@@ -251,6 +251,8 @@ export default function ProfilePage() {
     middleName: touched.middleName ? validateName(form.middleName, false) : '',
     lastName: touched.lastName ? validateName(form.lastName) : '',
     studentId: isStudent && touched.studentId ? validateStudentId(form.studentId) : '',
+    yearLevel: isStudent && touched.yearLevel ? validateYearLevel(form.yearLevel) : '',
+    program: isStudent && touched.program ? validateProgram(form.program) : '',
     email: touched.email ? validateEmail(form.email) : '',
     currentPassword: emailChanged && touched.currentPassword && !form.currentPassword ? 'Current password is required.' : '',
   };
@@ -278,6 +280,8 @@ export default function ProfilePage() {
       middleName: profile.middleName || '',
       lastName: profile.lastName || '',
       studentId: profile.studentId || '',
+      yearLevel: profile.yearLevel || '',
+      program: profile.program || '',
       email: profile.email || '',
       currentPassword: '',
     });
@@ -296,9 +300,10 @@ export default function ProfilePage() {
   async function saveDetails(event) {
     event.preventDefault();
     if (savingProfile) return;
-    setTouched({ firstName: true, middleName: true, lastName: true, studentId: true, email: true, currentPassword: true });
+    setTouched({ firstName: true, middleName: true, lastName: true, studentId: true, yearLevel: true, program: true, email: true, currentPassword: true });
     const invalid = validateName(form.firstName) || validateName(form.middleName, false) || validateName(form.lastName)
-      || (isStudent && validateStudentId(form.studentId)) || validateEmail(form.email)
+      || (isStudent && (validateStudentId(form.studentId) || validateYearLevel(form.yearLevel) || validateProgram(form.program)))
+      || validateEmail(form.email)
       || (emailChanged && !form.currentPassword);
     if (invalid) return;
     setSavingProfile(true);
@@ -309,7 +314,7 @@ export default function ProfilePage() {
         firstName: form.firstName.trim(),
         middleName: form.middleName.trim(),
         lastName: form.lastName.trim(),
-        ...(isStudent ? { studentId: form.studentId.trim() } : {}),
+        ...(isStudent ? { studentId: form.studentId.trim(), yearLevel: form.yearLevel, program: form.program } : {}),
       }, accessToken);
       applyProfile(result.user);
       if (!emailChanged) {
@@ -448,6 +453,8 @@ export default function ProfilePage() {
           <ReadOnlyRow icon={Mail} label="Email" value={maskEmail(profile.email)} />
           <ReadOnlyRow icon={UserRound} label="Full name" value={fullName(profile)} />
           {isStudent && <ReadOnlyRow icon={UserRound} label="Student ID" value={profile.studentId} />}
+          {isStudent && <ReadOnlyRow icon={GraduationCap} label="Year level" value={profile.yearLevel || 'Not set'} />}
+          {isStudent && <ReadOnlyRow icon={GraduationCap} label="Program" value={profile.program || 'Not set'} />}
         </div>
         {profileMessage && <p role="status" className="mt-4 text-sm text-emerald-700">{profileMessage}</p>}
       </section>
@@ -492,7 +499,7 @@ export default function ProfilePage() {
               {emailChanged && (
                 <div className="rounded-xl bg-slate-50 px-4 py-3">
                   <p className="text-sm font-semibold text-nu-dark">Verify before saving the new email</p>
-                  <p className="mt-1 text-sm text-slate-500">We will send a one-time code to your current email after checking your password. Your name and student ID save immediately.</p>
+                  <p className="mt-1 text-sm text-slate-500">We will send a one-time code to your current email after checking your password. Your name, student ID, year level, and program save immediately.</p>
                 </div>
               )}
               <label className="block text-sm font-medium text-slate-700">
@@ -522,6 +529,26 @@ export default function ProfilePage() {
                   Student ID
                   <input value={form.studentId} onBlur={() => setTouched((current) => ({ ...current, studentId: true }))} onChange={(event) => setForm((current) => ({ ...current, studentId: sanitizeStudentId(event.target.value) }))} className={`mt-1.5 ${fieldClass(nameErrors.studentId)}`} inputMode="numeric" autoComplete="off" />
                   {nameErrors.studentId && <span className="mt-1 block text-xs font-normal text-red-700">{nameErrors.studentId}</span>}
+                </label>
+              )}
+              {isStudent && (
+                <label className="block text-sm font-medium text-slate-700">
+                  Year level
+                  <select value={form.yearLevel} onBlur={() => setTouched((current) => ({ ...current, yearLevel: true }))} onChange={(event) => setForm((current) => ({ ...current, yearLevel: event.target.value }))} className={`mt-1.5 ${fieldClass(nameErrors.yearLevel)}`}>
+                    <option value="">Select your year level</option>
+                    {YEAR_LEVEL_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                  {nameErrors.yearLevel && <span className="mt-1 block text-xs font-normal text-red-700">{nameErrors.yearLevel}</span>}
+                </label>
+              )}
+              {isStudent && (
+                <label className="block text-sm font-medium text-slate-700">
+                  Program
+                  <select value={form.program} onBlur={() => setTouched((current) => ({ ...current, program: true }))} onChange={(event) => setForm((current) => ({ ...current, program: event.target.value }))} className={`mt-1.5 ${fieldClass(nameErrors.program)}`}>
+                    <option value="">Select your program</option>
+                    {PROGRAM_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                  {nameErrors.program && <span className="mt-1 block text-xs font-normal text-red-700">{nameErrors.program}</span>}
                 </label>
               )}
               {emailChanged && (

@@ -9,7 +9,7 @@ import { sendOtpEmail } from "../services/brevoService.js";
 import { resendOtpChallenge } from "../services/otpChallengeService.js";
 import { uploadProfileImage, removeProfileImage } from "../services/eventImageService.js";
 import { generateOtp, hashOtp, compareOtp, challengeDetails } from "../utils/otp.js";
-import { isValidEmail, passwordValidationError } from "../utils/authValidation.js";
+import { isValidEmail, passwordValidationError, programValidationError, yearLevelValidationError } from "../utils/authValidation.js";
 import { displayUser, issueTokens } from "./authUserController.js";
 
 const namePattern = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u;
@@ -17,7 +17,7 @@ const studentIdPattern = /^\d{4}-\d{6}$/;
 
 const profilePayload = (user) => ({
   id: user._id,
-  ...(user.role === "student" ? { studentId: user.studentId } : {}),
+  ...(user.role === "student" ? { studentId: user.studentId, yearLevel: user.yearLevel || "", program: user.program || "" } : {}),
   firstName: user.firstName,
   middleName: user.middleName || "",
   lastName: user.lastName,
@@ -154,7 +154,7 @@ export const updateMyProfile = async (req, res) => {
     const user = await loadUser(req);
     if (!user) return res.status(401).json({ message: "Invalid session" });
 
-    const { firstName, middleName, lastName, studentId } = req.body || {};
+    const { firstName, middleName, lastName, studentId, yearLevel, program } = req.body || {};
     if (typeof firstName !== "string" || typeof lastName !== "string" || (middleName !== undefined && typeof middleName !== "string")) {
       return res.status(400).json({ message: "Please provide valid profile fields" });
     }
@@ -179,7 +179,13 @@ export const updateMyProfile = async (req, res) => {
       if (normalizedStudentId !== user.studentId && await studentIdTaken(normalizedStudentId, user._id)) {
         return res.status(409).json({ message: "A user with this student ID already exists", field: "studentId" });
       }
+      const yearLevelError = yearLevelValidationError(yearLevel);
+      if (yearLevelError) return res.status(400).json({ message: yearLevelError, field: "yearLevel" });
+      const programError = programValidationError(program);
+      if (programError) return res.status(400).json({ message: programError, field: "program" });
       user.studentId = normalizedStudentId;
+      user.yearLevel = yearLevel.trim();
+      user.program = program.trim();
     }
 
     user.firstName = normalizedFirstName;

@@ -78,6 +78,8 @@ const buildUser = (overrides = {}) => {
   const record = {
     _id: userId,
     studentId: '2026-123456',
+    yearLevel: '1st Year',
+    program: 'Bachelor of Science in Computer Science',
     firstName: 'Ada',
     middleName: '',
     lastName: 'Lovelace',
@@ -113,14 +115,26 @@ test('profile updates a student ID and rejects one already used by a user or pen
   const saved = response();
   await updateMyProfile(authed('student', {
     firstName: 'Ada', middleName: '', lastName: 'Lovelace', studentId: '2026-654321',
+    yearLevel: '2nd Year', program: 'Bachelor of Science in Information Technology with specialization in Mobile and Web Applications',
   }), saved);
   assert.equal(saved.statusCode, 200);
   assert.equal(saved.body.user.studentId, '2026-654321');
+  assert.equal(saved.body.user.yearLevel, '2nd Year');
+  assert.equal(saved.body.user.program, 'Bachelor of Science in Information Technology with specialization in Mobile and Web Applications');
+
+  const invalidLevel = response();
+  await updateMyProfile(authed('student', {
+    firstName: 'Ada', middleName: '', lastName: 'Lovelace', studentId: '2026-654321',
+    yearLevel: '8th Year', program: 'Bachelor of Science in Computer Science',
+  }), invalidLevel);
+  assert.equal(invalidLevel.statusCode, 400);
+  assert.equal(invalidLevel.body.field, 'yearLevel');
 
   stub(User, 'findOne', async () => ({ _id: otherId }));
   const duplicate = response();
   await updateMyProfile(authed('student', {
     firstName: 'Ada', middleName: '', lastName: 'Lovelace', studentId: '2026-111111',
+    yearLevel: '1st Year', program: 'Bachelor of Science in Computer Science',
   }), duplicate);
   assert.equal(duplicate.statusCode, 409);
   assert.equal(duplicate.body.field, 'studentId');
@@ -130,24 +144,37 @@ test('profile updates a student ID and rejects one already used by a user or pen
   const pending = response();
   await updateMyProfile(authed('student', {
     firstName: 'Ada', middleName: '', lastName: 'Lovelace', studentId: '2026-222222',
+    yearLevel: '1st Year', program: 'Bachelor of Science in Computer Science',
   }), pending);
   assert.equal(pending.statusCode, 409);
 });
 
 test('an admin profile update changes the name and leaves the student ID unchanged', async () => {
-  const admin = buildUser({ role: 'admin', studentId: '2026-000001' });
+  const admin = buildUser({
+    role: 'admin',
+    studentId: '2026-000001',
+    yearLevel: '3rd Year',
+    program: 'Bachelor of Science in Nursing',
+  });
   stub(User, 'findById', () => found(admin));
   const res = response();
   await updateMyProfile(authed('admin', {
     firstName: 'Grace', middleName: '', lastName: 'Hopper', studentId: '2026-999999',
+    yearLevel: '1st Year', program: 'Bachelor of Science in Computer Science',
   }), res);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.user.studentId, undefined);
+  assert.equal(res.body.user.yearLevel, undefined);
+  assert.equal(res.body.user.program, undefined);
   assert.equal(admin.studentId, '2026-000001');
+  assert.equal(admin.yearLevel, '3rd Year');
+  assert.equal(admin.program, 'Bachelor of Science in Nursing');
   assert.equal(admin.firstName, 'Grace');
   const loaded = response();
   await getMyProfile(authed('admin'), loaded);
   assert.equal(loaded.body.user.studentId, undefined);
+  assert.equal(loaded.body.user.yearLevel, undefined);
+  assert.equal(loaded.body.user.program, undefined);
   assert.equal(loaded.body.user.firstName, 'Grace');
 });
 

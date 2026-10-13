@@ -29,6 +29,22 @@ const EVENT_TYPES = [
   'Other',
 ];
 
+const createClientKey = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const values = new Uint32Array(4);
+    globalThis.crypto.getRandomValues(values);
+    return `speaker-${Array.from(values)
+      .map((value) => value.toString(16))
+      .join('-')}`;
+  }
+
+  return `speaker-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
 const requiredText = (label, min, max) =>
   z
     .string()
@@ -311,7 +327,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
   const [formsError, setFormsError] = useState('');
 
   const defaultSpeakers = (event?.speakers || []).map((speaker) => ({
-    clientKey: speaker.clientKey || crypto.randomUUID(),
+    clientKey: speaker.clientKey || createClientKey(),
     name: speaker.name || '',
     role: speaker.role || '',
     photoUrl: speaker.photoUrl || '',
@@ -617,6 +633,25 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
       shouldValidate: true,
     });
     await trigger('agenda');
+  };
+
+  const toggleAgendaSpeaker = (agendaIndex, speakerKey, checked) => {
+    const currentValue = getValues(`agenda.${agendaIndex}.speakerKeys`);
+    const currentKeys = Array.isArray(currentValue)
+      ? currentValue
+      : currentValue
+        ? [currentValue]
+        : [];
+    const nextKeys = checked
+      ? [...new Set([...currentKeys, speakerKey])]
+      : currentKeys.filter((key) => key !== speakerKey);
+
+    setValue(`agenda.${agendaIndex}.speakerKeys`, nextKeys, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+    trigger('agenda');
   };
 
   const chooseSpeakerImage = (key, file) => {
@@ -1121,20 +1156,33 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                         <fieldset className="mt-4">
                           <legend className="text-xs font-semibold text-slate-600">Speakers</legend>
                           <div className="mt-2 flex flex-wrap gap-3">
-                            {speakerFields.fields.map((speaker, speakerIndex) => (
-                              <label
-                                key={speaker.id}
-                                className="inline-flex items-center gap-2 text-xs text-slate-600"
-                              >
-                                <input
-                                  type="checkbox"
-                                  value={speakerValues?.[speakerIndex]?.clientKey || ''}
-                                  {...register(`agenda.${index}.speakerKeys`)}
-                                />
-                                {speakerValues?.[speakerIndex]?.name ||
-                                  `Speaker ${speakerIndex + 1}`}
-                              </label>
-                            ))}
+                            {speakerFields.fields.map((speaker, speakerIndex) => {
+                              const speakerKey =
+                                speakerValues?.[speakerIndex]?.clientKey || speaker.clientKey;
+                              const assignedSpeakerKeys = Array.isArray(agendaValue.speakerKeys)
+                                ? agendaValue.speakerKeys
+                                : agendaValue.speakerKeys
+                                  ? [agendaValue.speakerKeys]
+                                  : [];
+
+                              return (
+                                <label
+                                  key={speaker.id}
+                                  className="inline-flex items-center gap-2 text-xs text-slate-600"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    value={speakerKey || ''}
+                                    checked={assignedSpeakerKeys.includes(speakerKey)}
+                                    onChange={(change) =>
+                                      toggleAgendaSpeaker(index, speakerKey, change.target.checked)
+                                    }
+                                  />
+                                  {speakerValues?.[speakerIndex]?.name ||
+                                    `Speaker ${speakerIndex + 1}`}
+                                </label>
+                              );
+                            })}
                           </div>
                           <FormMessage id={`agenda-${index}-speakerKeys-error`}>
                             {errors.agenda?.[index]?.speakerKeys?.message}
@@ -1167,7 +1215,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                 className="h-11 w-11 shrink-0 p-0"
                 onClick={() =>
                   speakerFields.append({
-                    clientKey: crypto.randomUUID(),
+                    clientKey: createClientKey(),
                     name: '',
                     role: '',
                     photoUrl: '',

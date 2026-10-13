@@ -15,7 +15,11 @@ const eventAttendanceSchema = new mongoose.Schema(
     studentName: { type: String, trim: true },
     studentId: { type: String, trim: true },
     timeIn: { type: Date, required: true, immutable: true },
+    timeInPhotoUrl: { type: String },
+    timeInPhotoPublicId: { type: String, select: false },
     timeOut: { type: Date },
+    timeOutPhotoUrl: { type: String },
+    timeOutPhotoPublicId: { type: String, select: false },
   },
   { timestamps: true },
 );

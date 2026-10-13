@@ -9,9 +9,10 @@ import { apiRateLimiter } from './middleware/rateLimiter.js';
 dotenv.config();
 
 const app = express();
+const frontendOrigin = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 
 app.use(cors({
-    origin: process.env.FRONTEND_URL,
+    origin: frontendOrigin,
     credentials: true
 }));
 app.use(express.json());

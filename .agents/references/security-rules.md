@@ -40,7 +40,13 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 - Registration OTP verification: 5 requests per 10 minutes.
 - Registration OTP resend: 3 requests per hour, with an application-level cooldown and resend count.
 - Login OTP resend: 3 requests per hour, with the configured `OTP_RESEND_SECONDS` cooldown and at most 3 resends per challenge.
+- Password reset request: 5 requests per 15 minutes.
+- Password reset OTP verification: 5 requests per 10 minutes.
+- Password reset OTP resend: 3 requests per hour, with the configured `OTP_RESEND_SECONDS` cooldown and at most 3 resends per challenge.
+- Password reset completion: 5 requests per 15 minutes.
 - OTP records also enforce a maximum of 5 incorrect attempts.
+
+Password reset uses its own OTP collection so a login code cannot change a password. A successful reset stores `passwordChangedAt` and does not issue an access token or refresh cookie. Access and refresh tokens issued before that time are rejected. A reset token includes `purpose: "password-reset"` and cannot be used as a bearer session token. Forgotten-password responses use the same message whether or not the email belongs to an account.
 
 OTP rotation and verification use conditional database updates to reject stale or simultaneous attempts. Failed resend delivery restores the previous code when the challenge has not since been consumed. Registration temporarily marks a challenge consumed before account creation and releases the claim if creation fails. Pending records without the new consumed field are treated as unconsumed.
 

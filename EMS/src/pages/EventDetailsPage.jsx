@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
-import EventStatus from '../components/EventStatus';
+import { ArrowLeft, MapPin } from 'lucide-react';
+import {
+  EventDetailsBody,
+  EventDetailsHero,
+  EventGuidanceList,
+} from '../components/EventDetailsContent';
 import { EventError } from '../components/EventFeedback';
 import { eventsApi } from '../lib/api';
-import { formatEventSchedule, organizerName } from '../lib/eventFormatting';
 import { useAuth } from '../context/AuthContext';
 
 const EventDetails = ({ id, returnTo, accessToken }) => {
@@ -108,231 +112,131 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
       </div>
     );
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      {event.imageUrl && (
-        <img
-          src={event.imageUrl}
-          alt={`Cover for ${event.title}`}
-          className="aspect-[16/6] w-full object-cover"
-        />
-      )}
-      <header className="border-b border-slate-200 bg-[#edf0f7] px-6 py-10 sm:px-10 sm:py-12">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-nu-navy">
-            {event.eventType || 'Other'}
-          </span>
-          <EventStatus status={event.status} />
+    <div className="@container space-y-5 sm:space-y-6">
+      <EventDetailsHero event={event} />
+      <div className="grid items-start gap-5 @min-[880px]:grid-cols-[minmax(0,1fr)_300px] @min-[1040px]:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="order-2 min-w-0 @min-[880px]:order-1">
+          <EventDetailsBody event={event} />
         </div>
-        {event.isArchived && (
-          <span className="ml-2 rounded-full bg-slate-200 px-3 py-1 text-xs font-medium">
-            Archived
-          </span>
-        )}
-        <h1 className="mt-4 max-w-3xl break-words text-3xl font-bold leading-tight sm:text-4xl">
-          {event.title}
-        </h1>
-      </header>
-      <div className="grid gap-10 p-6 sm:p-10 lg:grid-cols-[1.5fr_1fr]">
-        <section aria-labelledby="about-event">
-          <h2 id="about-event" className="text-xl font-semibold">
-            About this event
-          </h2>
-          <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
-            {event.description}
-          </p>
-        </section>
-        <aside className="rounded-xl border border-slate-200 bg-slate-50 p-6">
-          <h2 className="font-semibold">Event information</h2>
-          <dl className="mt-5 space-y-6 text-sm">
-            <div>
-              <dt className="font-medium">Date and time</dt>
-              <dd className="mt-2 text-slate-500">
-                {formatEventSchedule(event.startDate, event.endDate)}
-                <span className="mt-1 block text-xs">Philippine Standard Time (UTC+8)</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium">Location</dt>
-              <dd className="mt-2 break-words text-slate-500">{event.location}</dd>
-            </div>
-            <div>
-              <dt className="font-medium">Organizer</dt>
-              <dd className="mt-2 text-slate-500">{organizerName(event)}</dd>
-            </div>
-          </dl>
-          {event.registrationMode === 'required' && (
-            <div className="mt-7 border-t border-slate-200 pt-5">
-              <h3 className="text-sm font-semibold text-nu-dark">Registration</h3>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                {event.capacity
-                  ? `Limited to ${event.capacity} registered students.`
-                  : 'Registration is required for this event.'}
+        <aside className="order-1 min-w-0 space-y-5 @min-[880px]:order-2">
+          <section
+            aria-labelledby="registration-heading"
+            className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+          >
+            {event.registrationMode === 'required' && (
+              <div className="min-w-0">
+                <h2 id="registration-heading" className="text-base font-semibold text-nu-dark">
+                  Registration
+                </h2>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  {event.capacity
+                    ? `Limited to ${event.capacity} registered students.`
+                    : 'Registration is required for this event.'}
+                </p>
+                {capacityState.capacity && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {capacityState.registeredCount} of {capacityState.capacity} places filled
+                    {capacityState.isFull ? ' · new registrations join the waitlist' : ''}.
+                  </p>
+                )}
+                {registration?.status === 'registered' && (
+                  <p className="mt-3 text-sm font-semibold text-emerald-700">You are registered.</p>
+                )}
+                {registration?.status === 'waitlisted' && (
+                  <p className="mt-3 text-sm font-semibold text-amber-700">
+                    You are on the waitlist.
+                  </p>
+                )}
+                {registration?.status === 'cancelled' && (
+                  <p className="mt-3 text-sm text-slate-600">
+                    Your previous registration was cancelled.
+                  </p>
+                )}
+                {!registration || registration.status === 'cancelled' ? (
+                  <Button
+                    type="button"
+                    className="mt-4 w-full"
+                    disabled={
+                      registrationPending || event.isArchived || event.status !== 'Coming Soon'
+                    }
+                    onClick={() => changeRegistration('register')}
+                  >
+                    {registrationPending
+                      ? 'Saving…'
+                      : capacityState.isFull
+                        ? 'Join waitlist'
+                        : 'Register for event'}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4 w-full"
+                    disabled={
+                      registrationPending || event.isArchived || event.status !== 'Coming Soon'
+                    }
+                    onClick={() => changeRegistration('cancel')}
+                  >
+                    {registrationPending ? 'Saving…' : 'Cancel registration'}
+                  </Button>
+                )}
+                {registrationError && (
+                  <p role="alert" className="mt-3 text-xs text-red-700">
+                    {registrationError}
+                  </p>
+                )}
+                {registration?.status === 'registered' && (
+                  <p className="mt-3 text-center text-xs text-slate-500">
+                    Scan the event QR code while you are signed in to record attendance.
+                  </p>
+                )}
+              </div>
+            )}
+            {event.registrationMode !== 'required' && (
+              <div className="min-w-0">
+                <h2 id="registration-heading" className="text-base font-semibold text-nu-dark">
+                  Open event
+                </h2>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  No registration is required for this event.
+                </p>
+              </div>
+            )}
+            {event.registrationMode === 'required' && event.status !== 'Coming Soon' && (
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Registration and cancellation close when the event starts.
               </p>
-              {capacityState.capacity && (
-                <p className="mt-1 text-xs text-slate-500">
-                  {capacityState.registeredCount} of {capacityState.capacity} places filled
-                  {capacityState.isFull ? ' · new registrations join the waitlist' : ''}.
-                </p>
-              )}
-              {registration?.status === 'registered' && (
-                <p className="mt-3 text-sm font-semibold text-emerald-700">You are registered.</p>
-              )}
-              {registration?.status === 'waitlisted' && (
-                <p className="mt-3 text-sm font-semibold text-amber-700">
-                  You are on the waitlist.
-                </p>
-              )}
-              {registration?.status === 'cancelled' && (
-                <p className="mt-3 text-sm text-slate-600">
-                  Your previous registration was cancelled.
-                </p>
-              )}
-              {!registration || registration.status === 'cancelled' ? (
-                <Button
-                  type="button"
-                  className="mt-4 w-full"
-                  disabled={registrationPending || event.isArchived || event.status === 'Ended'}
-                  onClick={() => changeRegistration('register')}
-                >
-                  {registrationPending ? 'Saving…' : 'Register for event'}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-4 w-full"
-                  disabled={registrationPending || event.isArchived || event.status === 'Ended'}
-                  onClick={() => changeRegistration('cancel')}
-                >
-                  {registrationPending ? 'Saving…' : 'Cancel registration'}
-                </Button>
-              )}
-              {registrationError && (
-                <p role="alert" className="mt-3 text-xs text-red-700">
-                  {registrationError}
-                </p>
-              )}
-              {registration?.status === 'registered' && (
-                <p className="mt-3 text-center text-xs text-slate-500">
-                  Scan the event QR code while you are signed in to record attendance.
-                </p>
-              )}
-            </div>
-          )}
-          {event.registrationMode !== 'required' && (
-            <div className="mt-7 border-t border-slate-200 pt-5">
-              <h3 className="text-sm font-semibold text-nu-dark">Participation</h3>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                No registration is required for this event.
+            )}
+          </section>
+          <section
+            aria-labelledby="venue-heading"
+            className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+          >
+            <h2 id="venue-heading" className="text-base font-semibold text-nu-dark">
+              Venue & reminders
+            </h2>
+            <div className="mt-4 flex items-start gap-3 border-b border-slate-100 pb-4">
+              <MapPin size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-nu-navy" />
+              <p className="min-w-0 text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">
+                {event.location}
               </p>
             </div>
-          )}
+            <div className="mt-4 space-y-5">
+              <EventGuidanceList
+                title="Requirements"
+                items={event.requirements}
+                emptyMessage="No special requirements."
+              />
+              <EventGuidanceList
+                title="Reminders"
+                items={event.reminders}
+                emptyMessage="No additional reminders."
+              />
+            </div>
+          </section>
         </aside>
       </div>
-      {(event.tags?.length > 0 ||
-        event.agenda?.length > 0 ||
-        event.speakers?.length > 0 ||
-        event.requirements?.length > 0 ||
-        event.reminders?.length > 0) && (
-        <div className="grid gap-8 border-t border-slate-200 p-6 sm:p-10 lg:grid-cols-2">
-          {event.tags?.length > 0 && (
-            <div className="lg:col-span-2">
-              <div className="flex flex-wrap gap-2">
-                {event.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {event.agenda?.length > 0 && (
-            <section aria-labelledby="agenda-heading">
-              <h2 id="agenda-heading" className="text-xl font-semibold">
-                Program agenda
-              </h2>
-              <div className="mt-5 space-y-4">
-                {event.agenda
-                  .slice()
-                  .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
-                  .map((item) => (
-                    <div
-                      key={item._id || `${item.title}-${item.startDate}`}
-                      className="border-l-2 border-nu-navy/20 pl-4"
-                    >
-                      <p className="text-xs font-semibold text-nu-navy">
-                        {formatEventSchedule(item.startDate, item.endDate)}
-                      </p>
-                      <h3 className="mt-1 font-semibold">{item.title}</h3>
-                      {item.description && (
-                        <p className="mt-1 text-sm leading-6 text-slate-500">{item.description}</p>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </section>
-          )}
-          {event.speakers?.length > 0 && (
-            <section aria-labelledby="speakers-heading">
-              <h2 id="speakers-heading" className="text-xl font-semibold">
-                Speakers
-              </h2>
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {event.speakers.map((speaker) => (
-                  <div
-                    key={speaker.clientKey || speaker._id}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
-                  >
-                    {speaker.photoUrl ? (
-                      <img
-                        src={speaker.photoUrl}
-                        alt=""
-                        className="h-12 w-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 font-semibold text-slate-500">
-                        {speaker.name.slice(0, 1)}
-                      </div>
-                    )}
-                    <div>
-                      <p className="font-semibold">{speaker.name}</p>
-                      <p className="text-xs text-slate-500">{speaker.role}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-          {event.requirements?.length > 0 && (
-            <section aria-labelledby="requirements-heading">
-              <h2 id="requirements-heading" className="text-xl font-semibold">
-                Requirements
-              </h2>
-              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-600">
-                {event.requirements.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {event.reminders?.length > 0 && (
-            <section aria-labelledby="reminders-heading">
-              <h2 id="reminders-heading" className="text-xl font-semibold">
-                Reminders
-              </h2>
-              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-600">
-                {event.reminders.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
-      )}
-    </article>
+    </div>
   );
 };
 
@@ -346,15 +250,20 @@ const EventDetailsPage = () => {
       ? requestedReturn
       : '/home';
   return (
-    <>
+    <div className="mx-auto w-full min-w-0 max-w-6xl">
       <Link
         to={returnTo}
-        className="mb-6 inline-flex items-center rounded-lg py-2 text-sm font-semibold text-nu-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy"
+        className="mb-5 inline-flex min-h-10 items-center gap-2 rounded-lg py-2 text-xs font-medium text-nu-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy"
       >
-        Back to events
+        <ArrowLeft size={14} aria-hidden="true" />
+        Events{' '}
+        <span aria-hidden="true" className="px-1 text-slate-400">
+          /
+        </span>{' '}
+        Event details
       </Link>
       <EventDetails key={id} id={id} returnTo={returnTo} accessToken={accessToken} />
-    </>
+    </div>
   );
 };
 

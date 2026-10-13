@@ -141,12 +141,13 @@ test("updates organization name without changing legacy organizer", async () => 
   assert.equal(res.body.event.organizerName, "Student Council");
 });
 
-test("missing tokens receive 401, students receive 403, and admins pass the event guard", () => {
+test("missing tokens receive 401, students receive 403, and admins pass the event guard", async () => {
   const oldSecret = process.env.JWT_SECRET_KEY;
   process.env.JWT_SECRET_KEY = "test-only-signing-key";
+  mock.method(User, "findById", async () => ({ _id: adminId }));
   try {
     const denied = response();
-    authenticate({ headers: {} }, denied, () => { throw new Error("must not pass"); });
+    await authenticate({ headers: {} }, denied, () => { throw new Error("must not pass"); });
     assert.equal(denied.statusCode, 401);
 
     for (const [role, expected] of [["student", 403], ["admin", 200]]) {
@@ -154,7 +155,7 @@ test("missing tokens receive 401, students receive 403, and admins pass the even
       const req = { headers: { authorization: `Bearer ${token}` } };
       const res = response();
       let passed = false;
-      authenticate(req, res, () => authorizeRoles("admin")(req, res, () => { passed = true; }));
+      await authenticate(req, res, () => authorizeRoles("admin")(req, res, () => { passed = true; }));
       assert.equal(passed, role === "admin");
       assert.equal(res.statusCode || 200, expected);
     }
@@ -167,6 +168,7 @@ test("missing tokens receive 401, students receive 403, and admins pass the even
 test("HTTP create route enforces roles before parsing uploads and limits image size", async () => {
   const oldSecret = process.env.JWT_SECRET_KEY;
   process.env.JWT_SECRET_KEY = "test-only-signing-key";
+  mock.method(User, "findById", async () => ({ _id: adminId }));
   mock.method(Event, "create", async (data) => saved(data));
   const app = express();
   app.use(express.json());

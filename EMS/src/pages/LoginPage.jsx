@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import AuthLayout from '../components/AuthLayout';
 import PasswordVisibilityToggle from '../components/PasswordVisibilityToggle';
 import { authApi } from '../lib/api';
@@ -7,6 +7,8 @@ import { validateEmail } from '../lib/authValidation';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const notice = location.state?.notice || '';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
@@ -61,7 +63,11 @@ export default function LoginPage() {
             <PasswordVisibilityToggle visible={showPassword} onToggle={() => setShowPassword((value) => !value)} controls="login-password" />
           </div>
           {passwordError && <p aria-live="polite" id="login-password-error" className="mt-1 text-xs text-red-700">{passwordError}</p>}
+          <div className="mt-2 text-right">
+            <Link to="/forgot-password" className="text-sm font-semibold text-nu-navy underline-offset-2 hover:underline">Forgot password?</Link>
+          </div>
         </div>
+        {notice && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{notice}</p>}
         {formError && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-800">{formError}</p>}
         <button type="submit" disabled={isSubmitting} className="w-full rounded-lg bg-nu-navy px-4 py-3 text-sm font-semibold text-white transition hover:bg-nu-dark focus:outline-none focus:ring-2 focus:ring-nu-navy focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">
           {isSubmitting ? 'Sending verification code…' : 'Login Account'}

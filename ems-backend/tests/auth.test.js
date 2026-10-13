@@ -8,9 +8,10 @@ import express from 'express';
 import { BrevoClient } from '@getbrevo/brevo';
 import User from '../models/User.js';
 import LoginOtp from '../models/LoginOtp.js';
+import PasswordResetOtp from '../models/PasswordResetOtp.js';
 import PendingRegistration from '../models/PendingRegistration.js';
 import { registerUser } from '../controller/userController.js';
-import { loginUser, verifyLoginOtp, verifyRegistrationOtp, resendLoginOtp, resendRegistrationOtp, refreshAccessToken, logoutUser } from '../controller/authUserController.js';
+import { loginUser, verifyLoginOtp, verifyRegistrationOtp, resendLoginOtp, resendRegistrationOtp, refreshAccessToken, logoutUser, forgotPassword, verifyResetOtp, resendResetOtp, resetPassword } from '../controller/authUserController.js';
 import userRoutes from '../routes/UserRoutes/userRoutes.js';
 import { authenticate } from '../middleware/auth.js';
 import { authorizeRoles } from '../middleware/authorize.js';
@@ -55,7 +56,8 @@ beforeEach(() => {
   }));
   mock.method(console, 'error', () => {});
   for (const [model, methods] of [
-    [User, ['findOne', 'findById', 'create']],
+    [User, ['findOne', 'findById', 'create', 'updateOne']],
+    [PasswordResetOtp, ['findById', 'create', 'updateMany', 'deleteOne', 'updateOne', 'findOneAndUpdate']],
     [LoginOtp, ['findById', 'create', 'updateMany', 'deleteOne', 'updateOne', 'findOneAndUpdate']],
     [PendingRegistration, ['findById', 'findOneAndUpdate', 'deleteOne', 'updateOne']],
   ]) {
@@ -326,6 +328,92 @@ test('refresh returns the admin role for portal routing', async () => {
   assert.equal(jwt.verify(res.body.accesstoken, process.env.JWT_SECRET_KEY).role, 'admin');
 });
 
+test('password reset hides unknown emails, sends a hashed challenge, and removes it when email delivery fails', async () => {
+  stub(User, 'findOne', async () => null);
+  const missing = await invoke(forgotPassword, { email: registration.email });
+  assert.equal(missing.statusCode, 200);
+  assert.equal(missing.body.challengeId, undefined);
+  assert.equal(mail.length, 0);
+  stub(User, 'findOne', async () => user());
+  stub(PasswordResetOtp, 'updateMany', async () => ({ modifiedCount: 1 }));
+  let stored;
+  stub(PasswordResetOtp, 'create', async (fields) => { stored = fields; return { ...fields, _id: id }; });
+  stub(PasswordResetOtp, 'deleteOne', async () => ({ deletedCount: 1 }));
+  const sent = await invoke(forgotPassword, { email: ' STUDENT@EXAMPLE.INVALID ' });
+  assert.equal(sent.statusCode, 200);
+  assert.equal(sent.body.message, missing.body.message);
+  assert.equal(sent.body.challengeId, id.toString());
+  assert.ok(!sent.body.resetToken && !sent.body.otp && !sent.body.accesstoken);
+  const mailedCode = mail[0].textContent.match(/code is (\d{6})/)[1];
+  assert.ok(await bcrypt.compare(mailedCode, stored.codeHash));
+  assert.match(mail[0].subject, /password reset/i);
+  failMail = true;
+  assert.equal((await invoke(forgotPassword, { email: registration.email })).statusCode, 500);
+  assert.equal(PasswordResetOtp.deleteOne.mock.callCount(), 1);
+});
+
+test('password reset OTP rejects malformed, expired, consumed, and over-attempt challenges', async () => {
+  for (const body of [{}, { challengeId: 123, otp }, { challengeId: id.toString(), otp: 'abc123' }]) {
+    assert.equal((await invoke(verifyResetOtp, body)).statusCode, 400);
+  }
+  for (const [record, status] of [[null, 401], [challenge({ expiresAt: new Date(0) }), 401], [challenge({ consumedAt: new Date() }), 401], [challenge({ attempts: 5 }), 429]]) {
+    stub(PasswordResetOtp, 'findById', async () => record);
+    assert.equal((await invoke(verifyResetOtp, { challengeId: id.toString(), otp })).statusCode, status);
+  }
+  stub(PasswordResetOtp, 'findById', async () => challenge());
+  stub(PasswordResetOtp, 'updateOne', async () => ({ modifiedCount: 1 }));
+  assert.equal((await invoke(verifyResetOtp, { challengeId: id.toString(), otp: wrongOtp })).statusCode, 401);
+});
+
+test('password reset resend enforces cooldown, expiry, consumption, attempts, and count limits', async () => {
+  assert.equal((await invoke(resendResetOtp, { challengeId: 'invalid' })).statusCode, 400);
+  for (const [record, status] of [
+    [challenge({ expiresAt: new Date(0) }), 410],
+    [challenge({ consumedAt: new Date() }), 401],
+    [challenge({ attempts: 5 }), 429],
+    [challenge({ resendCount: 3 }), 429],
+    [challenge({ lastSentAt: new Date() }), 429],
+  ]) {
+    stub(PasswordResetOtp, 'findById', async () => record);
+    assert.equal((await invoke(resendResetOtp, { challengeId: id.toString() })).statusCode, status);
+  }
+  assert.equal(mail.length, 0);
+});
+
+test('password reset verifies once, updates the password, rejects token reuse, and invalidates older refresh tokens', async () => {
+  stub(PasswordResetOtp, 'findById', async () => challenge());
+  stub(User, 'findById', async () => user());
+  stub(PasswordResetOtp, 'updateOne', async () => ({ modifiedCount: 1 }));
+  const verified = await invoke(verifyResetOtp, { challengeId: id.toString(), otp });
+  assert.equal(verified.statusCode, 200);
+  assert.equal(verified.body.accesstoken, undefined);
+  assert.equal(verified.cookieValue, undefined);
+  const claims = jwt.verify(verified.body.resetToken, process.env.JWT_SECRET_KEY);
+  assert.equal(claims.purpose, 'password-reset');
+  assert.equal(claims.exp - claims.iat, 10 * 60);
+  let changedAt;
+  stub(User, 'updateOne', async (filter, update) => {
+    changedAt = update.$set.passwordChangedAt;
+    assert.ok(await bcrypt.compare('Replacement-1aA!', update.$set.password));
+    return { matchedCount: 1, modifiedCount: 1 };
+  });
+  const reset = await invoke(resetPassword, { resetToken: verified.body.resetToken, password: 'Replacement-1aA!' });
+  assert.equal(reset.statusCode, 200);
+  assert.ok(!reset.body.accesstoken);
+  stub(User, 'findById', async () => ({ ...user(), passwordChangedAt: new Date(changedAt.getTime() + 60000) }));
+  const reused = await invoke(resetPassword, { resetToken: verified.body.resetToken, password: 'Another-1aA!' });
+  assert.equal(reused.statusCode, 401);
+  const refreshToken = jwt.sign({ sub: userId.toString() }, process.env.JWT_REFRESH_SECRET_KEY, { expiresIn: '7d' });
+  const refreshed = await invoke(refreshAccessToken, {}, { refreshToken });
+  assert.equal(refreshed.statusCode, 401);
+  const accessToken = jwt.sign({ sub: userId.toString(), role: 'student' }, process.env.JWT_SECRET_KEY);
+  const denied = response();
+  let passed = false;
+  await authenticate({ headers: { authorization: `Bearer ${accessToken}` } }, denied, () => { passed = true; });
+  assert.equal(passed, false);
+  assert.equal(denied.statusCode, 401);
+});
+
 test('HTTP routes retain OTP rate limits and return distinct unauthenticated/forbidden results', async () => {
   const app = express();
   app.use(express.json());
@@ -335,13 +423,16 @@ test('HTTP routes retain OTP rate limits and return distinct unauthenticated/for
   await new Promise((resolve) => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    for (const [path, limit] of [['resend-login-otp', 3], ['resend-registration-otp', 3], ['verify-otp', 5], ['verify-registration-otp', 5], ['login', 5], ['', 5]]) {
+    for (const [path, limit] of [['resend-login-otp', 3], ['resend-registration-otp', 3], ['resend-reset-otp', 3], ['verify-otp', 5], ['verify-registration-otp', 5], ['verify-reset-otp', 5], ['login', 5], ['forgot-password', 5], ['reset-password', 5], ['', 5]]) {
       for (let count = 0; count < limit; count++) {
         assert.equal((await fetch(`${base}/api/users/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 400);
       }
       assert.equal((await fetch(`${base}/api/users/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 429);
     }
     assert.equal((await fetch(`${base}/admin-check`)).status, 401);
+    stub(User, 'findById', async () => user());
+    const resetToken = jwt.sign({ sub: userId.toString(), purpose: 'password-reset' }, process.env.JWT_SECRET_KEY);
+    assert.equal((await fetch(`${base}/admin-check`, { headers: { Authorization: `Bearer ${resetToken}` } })).status, 401);
     const studentToken = jwt.sign({ sub: userId.toString(), role: 'student' }, process.env.JWT_SECRET_KEY);
     assert.equal((await fetch(`${base}/admin-check`, { headers: { Authorization: `Bearer ${studentToken}` } })).status, 403);
     const adminToken = jwt.sign({ sub: userId.toString(), role: 'admin' }, process.env.JWT_SECRET_KEY);

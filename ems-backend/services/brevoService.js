@@ -7,11 +7,23 @@ export const sendOtpEmail = async ({
     purpose = 'login'
 }) => {
 
-    const isRegistration = purpose === 'registration';
-    const emailPurpose = isRegistration ? 'registration' : 'login';
-    const emailHeading = isRegistration
-        ? 'Registration Verification'
-        : 'Login Verification';
+    const emailCopy = {
+        registration: {
+            label: 'registration',
+            heading: 'Registration Verification',
+        },
+        'password-reset': {
+            label: 'password reset',
+            heading: 'Password Reset Verification',
+        },
+        login: {
+            label: 'login',
+            heading: 'Login Verification',
+        },
+    };
+    const selected = emailCopy[purpose] || emailCopy.login;
+    const emailPurpose = selected.label;
+    const emailHeading = selected.heading;
 
     const brevo = new BrevoClient({
         apiKey: process.env.BREVO_API_KEY

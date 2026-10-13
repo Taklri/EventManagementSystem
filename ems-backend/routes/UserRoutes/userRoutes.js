@@ -7,7 +7,11 @@ import {
     verifyRegistrationOtp,
     resendRegistrationOtp,
     refreshAccessToken,
-    logoutUser
+    logoutUser,
+    forgotPassword,
+    verifyResetOtp,
+    resendResetOtp,
+    resetPassword
 } from '../../controller/authUserController.js';
 import {
     loginRateLimiter,
@@ -15,7 +19,11 @@ import {
     registerRateLimiter,
     registrationOtpRateLimiter,
     registrationResendRateLimiter,
-    loginResendRateLimiter
+    loginResendRateLimiter,
+    forgotPasswordRateLimiter,
+    resetOtpRateLimiter,
+    resetResendRateLimiter,
+    resetPasswordRateLimiter
 } from '../../middleware/rateLimiter.js';
 import { authenticate } from '../../middleware/auth.js';
 
@@ -29,6 +37,10 @@ router.post('/verify-otp', otpRateLimiter,  verifyLoginOtp);
 router.post('/resend-login-otp', loginResendRateLimiter, resendLoginOtp);
 router.post('/verify-registration-otp', registrationOtpRateLimiter, verifyRegistrationOtp);
 router.post('/resend-registration-otp', registrationResendRateLimiter, resendRegistrationOtp);
+router.post('/forgot-password', forgotPasswordRateLimiter, forgotPassword);
+router.post('/verify-reset-otp', resetOtpRateLimiter, verifyResetOtp);
+router.post('/resend-reset-otp', resetResendRateLimiter, resendResetOtp);
+router.post('/reset-password', resetPasswordRateLimiter, resetPassword);
 router.post('/refresh', refreshAccessToken);
 router.post('/logout', logoutUser);
 

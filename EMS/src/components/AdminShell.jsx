@@ -100,7 +100,7 @@ const AdminShell = () => {
         Skip to content
       </a>
 
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 md:hidden">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:hidden">
         <div className="flex min-w-0 items-center gap-3">
           <img src={nuLogo} alt="" className="h-9 w-9 shrink-0 object-contain" />
           <div className="min-w-0">
@@ -120,8 +120,8 @@ const AdminShell = () => {
         </button>
       </header>
 
-      <div className="min-h-[calc(100dvh-4rem)] md:min-h-dvh">
-        <aside className="fixed bottom-6 left-6 top-6 z-30 hidden w-64 flex-col gap-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex">
+      <div className="min-h-[calc(100dvh-4rem)] lg:min-h-dvh">
+        <aside className="fixed bottom-6 left-6 top-6 z-30 hidden w-64 flex-col gap-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:flex">
           <div className="flex shrink-0 items-center gap-3">
             <img src={nuLogo} alt="" className="h-10 w-10 shrink-0 object-contain" />
             <div className="min-w-0">
@@ -143,7 +143,7 @@ const AdminShell = () => {
 
         <div
           id="admin-mobile-nav"
-          className={`${menuOpen ? 'block' : 'hidden'} fixed left-0 right-0 top-16 z-30 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-slate-200 bg-white p-4 shadow-sm md:hidden`}
+          className={`${menuOpen ? 'block' : 'hidden'} fixed left-0 right-0 top-16 z-30 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-slate-200 bg-white p-4 shadow-sm lg:hidden`}
         >
           {navigation}
           <div className="mt-4 border-t border-slate-100 pt-4">
@@ -159,7 +159,7 @@ const AdminShell = () => {
         <main
           id="admin-main"
           tabIndex={-1}
-          className="min-w-0 px-4 py-6 outline-none motion-safe:animate-page-enter sm:px-6 md:ml-[280px]"
+          className="min-w-0 px-4 py-6 outline-none motion-safe:animate-page-enter sm:px-6 lg:ml-[280px]"
         >
           <Outlet />
         </main>

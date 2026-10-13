@@ -32,6 +32,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    passwordChangedAt: {
+        type: Date,
+        default: null,
+    },
     role: {
         type: String,
         enum: ["student", "admin"],

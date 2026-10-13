@@ -18,6 +18,7 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminEventCreatePage from './pages/AdminEventCreatePage';
 import AdminEventDetailsPage from './pages/AdminEventDetailsPage';
 import AdminEventEditPage from './pages/AdminEventEditPage';
+import AdminStudentsPage from './pages/Adminstudentpage';
 import { Toaster } from './components/ui/sonner';
 
 const AdminEventsPage = lazy(() => import('./pages/AdminEventsPage'));
@@ -127,6 +128,7 @@ const RouteContent = () => {
         <Route path="events/new" element={<AdminEventCreatePage />} />
         <Route path="events/:id" element={<AdminEventDetailsPage />} />
         <Route path="events/:id/edit" element={<AdminEventEditPage />} />
+        <Route path="students" element={<AdminStudentsPage />} />
       </Route>
       <Route path="*" element={<Navigate to={destination || '/'} replace />} />
     </Routes>

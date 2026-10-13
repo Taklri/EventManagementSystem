@@ -88,6 +88,9 @@ export const eventsApi = {
 };
 
 export const adminApi = {
+  students: (token) => apiRequest('/admin/students', { token }),
+  updateStudent: (id, body, token) =>
+    apiRequest(`/admin/students/${encodeURIComponent(id)}`, { method: 'PUT', body, token }),
   dashboard: (token) => apiRequest('/admin/dashboard', { token }),
   events: ({ page = 1, limit = 10, search = '', status = 'all' }, token) =>
     apiRequest(

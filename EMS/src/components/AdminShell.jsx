@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarDays, ChevronDown, LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, LayoutDashboard, LogOut, Menu, Users, X } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import nuLogo from '../assets/NULOGO.svg';
@@ -87,6 +87,15 @@ const AdminShell = () => {
       >
         <CalendarDays size={17} aria-hidden="true" />
         Event management
+      </Link>
+      <Link
+        to="/admin/students"
+        onClick={() => setMenuOpen(false)}
+        aria-current={location.pathname.startsWith('/admin/students') ? 'page' : undefined}
+        className={`flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-gold focus-visible:ring-offset-2 ${location.pathname.startsWith('/admin/students') ? 'bg-nu-navy text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-nu-navy'}`}
+      >
+        <Users size={17} className="shrink-0" aria-hidden="true" />
+        <span className="whitespace-nowrap text-sm tracking-tight">Student management</span>
       </Link>
     </nav>
   );

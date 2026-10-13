@@ -3,6 +3,7 @@ import Event from "../models/Event.js";
 import EventAttendance from "../models/EventAttendance.js";
 import EventRegistration from "../models/EventRegistration.js";
 import { withStatus } from "../utils/eventStatus.js";
+import { notifyStudent } from "../services/notificationService.js";
 
 const registrationPayload = (registration) => ({
   _id: registration._id,
@@ -55,6 +56,16 @@ export const registerForEvent = async (req, res) => {
       registration.cancelledAt = undefined;
     }
     await registration.save();
+    await notifyStudent({
+      user: req.user.sub,
+      type: status === "waitlisted" ? "waitlisted" : "registered",
+      title: status === "waitlisted" ? "Waitlist" : "Registration confirmed",
+      message:
+        status === "waitlisted"
+          ? `You were added to the waitlist for ${event.title}.`
+          : `You are registered for ${event.title}.`,
+      event: event._id,
+    });
 
     return res.status(201).json({
       message: status === "waitlisted" ? "You have been added to the waitlist" : "You are registered for this event",
@@ -79,6 +90,13 @@ export const cancelEventRegistration = async (req, res) => {
     registration.status = "cancelled";
     registration.cancelledAt = new Date();
     await registration.save();
+    await notifyStudent({
+      user: req.user.sub,
+      type: "registration_cancelled",
+      title: "Registration cancelled",
+      message: `Your registration for ${event.title} was cancelled.`,
+      event: event._id,
+    });
     return res.status(200).json({ message: "Registration cancelled", registration: registrationPayload(registration) });
   } catch (error) {
     console.error(error);

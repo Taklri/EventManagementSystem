@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Event from "../models/Event.js";
 import EventAttendance from "../models/EventAttendance.js";
 import EventRegistration from "../models/EventRegistration.js";
+import { notifyStudent } from "../services/notificationService.js";
 
 const getEvent = async (id) => {
   if (!mongoose.isValidObjectId(id)) return { error: { status: 400, message: "Event id is not valid" } };
@@ -53,11 +54,25 @@ export const recordAttendance = async (req, res) => {
     let attendance = await EventAttendance.findOne({ event: event._id, student: req.user.sub });
     if (!attendance) {
       attendance = await EventAttendance.create({ event: event._id, student: req.user.sub, timeIn: now });
+      await notifyStudent({
+        user: req.user.sub,
+        type: "attendance",
+        title: "Attendance recorded",
+        message: `Attendance was recorded for ${event.title}.`,
+        event: event._id,
+      });
       return res.status(201).json({ message: "Time in recorded", attendance });
     }
     if (attendance.timeOut) return res.status(409).json({ message: "You have already recorded time in and time out", attendance });
     attendance.timeOut = now;
     await attendance.save();
+    await notifyStudent({
+      user: req.user.sub,
+      type: "attendance",
+      title: "Attendance recorded",
+      message: `Attendance was recorded for ${event.title}.`,
+      event: event._id,
+    });
     return res.status(200).json({ message: "Time out recorded", attendance });
   } catch (error) {
     console.error(error);

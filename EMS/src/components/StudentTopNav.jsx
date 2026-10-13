@@ -1,20 +1,41 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, ChevronDown, LogOut } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { notificationsApi } from '../lib/api';
 import nuLogo from '../assets/NULOGO.svg';
 
 const navClass = ({ isActive }) =>
   `rounded-lg px-4 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy focus-visible:ring-offset-2 ${isActive ? 'bg-nu-navy text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-nu-navy'}`;
 export default function StudentTopNav() {
   const { pathname } = useLocation();
-  const { signOut, user } = useAuth();
+  const { signOut, user, accessToken } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
   const displayName =
     [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Student account';
   const initials =
     [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toLocaleUpperCase() || 'S';
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    notificationsApi
+      .list(accessToken)
+      .then((data) => {
+        if (active) setUnreadCount(data.unreadCount || 0);
+      })
+      .catch(() => {
+        if (active) setUnreadCount(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accessToken, pathname]);
+  useEffect(() => {
+    const onChange = (event) => setUnreadCount(event.detail?.unreadCount || 0);
+    window.addEventListener('student-notifications-changed', onChange);
+    return () => window.removeEventListener('student-notifications-changed', onChange);
+  }, []);
   async function handleSignOut() {
     if (isSigningOut) return;
     setIsSigningOut(true);
@@ -64,15 +85,20 @@ export default function StudentTopNav() {
           </NavLink>
         </nav>
         <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            disabled
-            aria-label="Notifications coming soon"
-            title="Notifications coming soon"
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400"
+          <NavLink
+            to="/notifications"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+            className={({ isActive }) =>
+              `relative flex h-10 w-10 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy focus-visible:ring-offset-2 ${isActive ? 'bg-nu-navy text-white' : 'text-nu-navy hover:bg-slate-100'}`
+            }
           >
             <Bell size={20} aria-hidden="true" />
-          </button>
+            {unreadCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </NavLink>
           <details className="group relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-1.5 text-nu-dark outline-none focus-visible:ring-2 focus-visible:ring-nu-navy [&::-webkit-details-marker]:hidden">
               <span

@@ -16,8 +16,11 @@ import { useAuth } from '../context/AuthContext';
 import {
   sanitizeName,
   sanitizeStudentId,
+  validateProgram,
   validateName,
   validateStudentId,
+  validateYearLevel,
+  PROGRAM_OPTIONS,
 } from '../lib/authValidation';
 
 const ROWS_PER_PAGE = 10;
@@ -90,6 +93,8 @@ function ViewStudentModal({ student, onClose }) {
   const rows = [
     ['Student ID', student.studentId],
     ['Name', getFullName(student)],
+    ['Year level', student.yearLevel || '—'],
+    ['Program', student.program || '—'],
     ['Email', student.email],
     ['Events joined', String(student.eventsJoined)],
   ];
@@ -120,6 +125,8 @@ function EditStudentModal({ student, students, onClose, onSave }) {
   const [firstName, setFirstName] = useState(student.firstName);
   const [middleName, setMiddleName] = useState(student.middleName);
   const [lastName, setLastName] = useState(student.lastName);
+  const [yearLevel, setYearLevel] = useState(student.yearLevel || '');
+  const [program, setProgram] = useState(student.program || '');
 
   const [errors, setErrors] = useState({});
 
@@ -159,6 +166,16 @@ function EditStudentModal({ student, students, onClose, onSave }) {
       newErrors.lastName = lastNameError;
     }
 
+    const yearLevelError = validateYearLevel(yearLevel);
+    if (yearLevelError) {
+      newErrors.yearLevel = yearLevelError;
+    }
+
+    const programError = validateProgram(program);
+    if (programError) {
+      newErrors.program = programError;
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -171,6 +188,8 @@ function EditStudentModal({ student, students, onClose, onSave }) {
       firstName: firstName.trim(),
       middleName: middleName.trim(),
       lastName: lastName.trim(),
+      yearLevel: yearLevel.trim(),
+      program,
       email: student.email,
       eventsJoined: student.eventsJoined,
     };
@@ -280,6 +299,41 @@ function EditStudentModal({ student, students, onClose, onSave }) {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="edit-year-level" className={modalLabelClass}>Year level</label>
+            <Input
+              id="edit-year-level"
+              value={yearLevel}
+              maxLength={40}
+              onChange={(event) => {
+                setYearLevel(event.target.value);
+                setErrors({ ...errors, yearLevel: '' });
+              }}
+              aria-invalid={Boolean(errors.yearLevel)}
+              className={borderOf('yearLevel')}
+            />
+            {errorBox('yearLevel')}
+          </div>
+          <div>
+            <label htmlFor="edit-program" className={modalLabelClass}>Program</label>
+            <select
+              id="edit-program"
+              value={program}
+              onChange={(event) => {
+                setProgram(event.target.value);
+                setErrors({ ...errors, program: '' });
+              }}
+              aria-invalid={Boolean(errors.program)}
+              className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring ${borderOf('program')}`}
+            >
+              <option value="">Select a program</option>
+              {PROGRAM_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+            {errorBox('program')}
+          </div>
+        </div>
+
         {/* the email is locked: the admin can see it but cannot change it */}
         <div>
           <label htmlFor="edit-email" className={modalLabelClass}>
@@ -353,7 +407,7 @@ function AdminStudentsPage() {
 
   const keyword = search.trim().toLowerCase();
   const filtered = students.filter((student) =>
-    `${getFullName(student)} ${student.studentId} ${student.email}`.toLowerCase().includes(keyword),
+    `${getFullName(student)} ${student.studentId} ${student.email} ${student.yearLevel || ''} ${student.program || ''}`.toLowerCase().includes(keyword),
   );
 
   // only the students of the current page
@@ -361,10 +415,10 @@ function AdminStudentsPage() {
   const visible = filtered.slice(start, start + ROWS_PER_PAGE);
 
   async function handleSave(updated) {
-    const { studentId, firstName, middleName, lastName } = updated;
+    const { studentId, firstName, middleName, lastName, yearLevel, program } = updated;
     let result;
     try {
-      result = await adminApi.updateStudent(updated.id, { studentId, firstName, middleName, lastName }, accessToken);
+      result = await adminApi.updateStudent(updated.id, { studentId, firstName, middleName, lastName, yearLevel, program }, accessToken);
     } catch (error) {
       if (error.status === 401) error.message = 'Your session expired. Sign in again.';
       if (error.status === 403) error.message = 'Administrator access is required.';
@@ -436,7 +490,7 @@ function AdminStudentsPage() {
           <Table
             size="small"
             sx={{
-              minWidth: 600,
+              minWidth: 1050,
               '& .MuiTableCell-root': { fontFamily: 'inherit', borderColor: '#e2e8f0', py: 1.75 },
             }}
           >
@@ -445,6 +499,8 @@ function AdminStudentsPage() {
                 {[
                   'Student',
                   'Student ID',
+                  'Year level',
+                  'Program',
                   'Events joined',
                   'Actions',
                 ].map((heading) => (
@@ -475,6 +531,12 @@ function AdminStudentsPage() {
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap', color: '#475569' }}>
                     {student.studentId}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap', color: '#475569' }}>
+                    {student.yearLevel || '—'}
+                  </TableCell>
+                  <TableCell sx={{ minWidth: 260, maxWidth: 380, color: '#475569' }}>
+                    <span className="line-clamp-2">{student.program || '—'}</span>
                   </TableCell>
                   <TableCell sx={{ color: '#475569' }}>{student.eventsJoined}</TableCell>
                   <TableCell>

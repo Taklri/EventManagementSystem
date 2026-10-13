@@ -9,7 +9,16 @@ import { getAdminStudents, updateAdminStudent } from '../controller/adminStudent
 
 afterEach(() => mock.restoreAll());
 const id = '507f1f77bcf86cd799439011';
-const student = { _id: id, studentId: '2026-000001', firstName: 'Test', lastName: 'Student', email: 'test@example.com', password: 'never-return' };
+const student = {
+  _id: id,
+  studentId: '2026-000001',
+  firstName: 'Test',
+  lastName: 'Student',
+  yearLevel: '1st Year',
+  program: 'Bachelor of Science in Computer Science',
+  email: 'test@example.com',
+  password: 'never-return',
+};
 const body = { studentId: student.studentId, firstName: 'Updated', middleName: '', lastName: 'Student' };
 const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return this; } });
 
@@ -27,6 +36,8 @@ test('list selects students and safe fields and counts only registered records',
   assert.equal(res.body.users[0].eventsJoined, 3);
   assert.equal(res.body.users[0].password, undefined);
   assert.equal(res.body.users[0].middleName, '');
+  assert.equal(res.body.users[0].yearLevel, student.yearLevel);
+  assert.equal(res.body.users[0].program, student.program);
 });
 
 test('updates only student targets and accepts an empty middle name', async () => {

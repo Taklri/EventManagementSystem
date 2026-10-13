@@ -46,23 +46,15 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
     };
   }, [id, attempt, accessToken]);
 
-  const changeRegistration = async (action) => {
+  const cancelRegistration = async () => {
     setRegistrationPending(true);
     setRegistrationError('');
     const previousStatus = registration?.status;
     try {
-      const result =
-        action === 'register'
-          ? await eventsApi.register(id, accessToken)
-          : await eventsApi.cancelRegistration(id, accessToken);
+      const result = await eventsApi.cancelRegistration(id, accessToken);
       setRegistration(result.registration);
       setCapacityState((current) => {
-        const change =
-          action === 'register' && result.registration?.status === 'registered'
-            ? 1
-            : action === 'cancel' && previousStatus === 'registered'
-              ? -1
-              : 0;
+        const change = previousStatus === 'registered' ? -1 : 0;
         const registeredCount = Math.max(0, current.registeredCount + change);
         return {
           ...current,
@@ -70,7 +62,7 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
           isFull: Boolean(current.capacity && registeredCount >= current.capacity),
         };
       });
-      toast.success(action === 'register' ? 'Registration saved.' : 'Registration cancelled.');
+      toast.success('Registration cancelled.');
     } catch (requestError) {
       setRegistrationError(requestError.message || 'Unable to update your registration.');
     } finally {
@@ -153,20 +145,17 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                   </p>
                 )}
                 {!registration || registration.status === 'cancelled' ? (
-                  <Button
-                    type="button"
-                    className="mt-4 w-full"
-                    disabled={
-                      registrationPending || event.isArchived || event.status !== 'Coming Soon'
-                    }
-                    onClick={() => changeRegistration('register')}
-                  >
-                    {registrationPending
-                      ? 'Saving…'
-                      : capacityState.isFull
-                        ? 'Join waitlist'
-                        : 'Register for event'}
-                  </Button>
+                  event.isArchived || event.status !== 'Coming Soon' ? (
+                    <Button type="button" className="mt-4 w-full" disabled>
+                      Registration closed
+                    </Button>
+                  ) : (
+                    <Button asChild className="mt-4 w-full">
+                      <Link to={`/events/${id}/register`}>
+                        {capacityState.isFull ? 'Complete form to join waitlist' : 'Complete registration'}
+                      </Link>
+                    </Button>
+                  )
                 ) : (
                   <Button
                     type="button"
@@ -175,10 +164,15 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                     disabled={
                       registrationPending || event.isArchived || event.status !== 'Coming Soon'
                     }
-                    onClick={() => changeRegistration('cancel')}
+                    onClick={cancelRegistration}
                   >
                     {registrationPending ? 'Saving…' : 'Cancel registration'}
                   </Button>
+                )}
+                {registration?.submittedAt && registration.status !== 'cancelled' && (
+                  <Link to={`/events/${id}/register`} className="mt-3 inline-flex text-xs font-semibold text-nu-navy underline">
+                    View submitted answers
+                  </Link>
                 )}
                 {registrationError && (
                   <p role="alert" className="mt-3 text-xs text-red-700">

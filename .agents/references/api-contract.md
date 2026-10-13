@@ -78,6 +78,10 @@ Every event response includes safe defaults for fields added after the initial s
 
 `GET /api/events/:id/registration` returns the current registration plus `capacity`, `registeredCount`, and `isFull` for the event. `GET /api/events/my-registrations` registrations also include `attendance: null` or `{ timeIn, timeOut }` for the current student's attendance record.
 
+## Reusable registration forms
+
+Admin form endpoints are protected by the admin role. They support list, create, read, update, archive, and unarchive operations under `/api/admin/registration-forms`. Form updates modify the current questions in place; submitted registrations retain answer and question-label snapshots. New required-registration events use `registrationFormId`; open events clear form and capacity. Archived forms stay available to attached events and are cleaned up after 30 days only when unreferenced.
+
 ## Response conventions
 
 - Successful responses generally include a human-readable `message`.
@@ -97,3 +101,13 @@ Authorization: Bearer <access-token>
 ```
 
 Refresh and logout use the `refreshToken` HTTP-only cookie rather than the Authorization header.
+
+## Registration forms and confirmed attendance
+
+Registration-required events resolve a reusable form from `registrationFormId`, then fall back to the legacy embedded `registrationForm`, then an empty form. New form items use `text` (question labels 5–100 characters), `multipleChoice` (single answer, up to 10 options), `multipleAnswer`, `dropdown`, and `instructions`; there may be up to 12 items. Legacy `shortText`, `longText`, `radio`, and array-valued `multipleChoice` items remain readable for existing forms. Forms update in place and event form selection locks after the first submitted registration.
+
+`GET /api/events/:id/registration/form` is student-only and returns `{ event, form, identity, registration }`. Identity is read-only metadata derived server-side and is not a configurable form field. `POST /api/events/:id/registration` accepts `{ answers: [{ key, value }] }`; `multipleChoice` values are strings and `multipleAnswer` values are arrays. Legacy array-valued `multipleChoice` answers remain accepted. Invalid answers return `400` with `field: "answers"` and `issues`. No registration is saved until answers pass validation. Existing no-form events use an empty form but still require submission.
+
+`GET /api/admin/events/:id/registrations` is admin-only and now returns `{ registration, registrations, pagination }`; it accepts `page`, `limit`, and `status` (`all`, `registered`, `waitlisted`, `cancelled`). `GET /api/admin/events/:id/registrations/export` returns the complete CSV roster with submitted answers and a blank signature column.
+
+`POST /api/events/:id/attendance/preview` is student-only and accepts `{ token }`. It validates the signed QR token and returns the next action without writing attendance. `POST /api/events/:id/attendance` explicitly confirms the action. First confirmation records time in; a later confirmation records time out; subsequent scans receive `409`. QR tokens expire within 15 minutes. Time in runs from 30 minutes before event start to event end; time out runs until 30 minutes after event end. Open and archived events cannot collect attendance. Admin attendance summaries and records remain readable after archive.

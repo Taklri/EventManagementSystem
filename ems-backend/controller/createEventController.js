@@ -4,6 +4,10 @@ import { withStatus } from "../utils/eventStatus.js";
 import mongoose from "mongoose";
 import { fileTypeFromBuffer } from "file-type";
 import { uploadEventImage, removeEventImage } from "../services/eventImageService.js";
+import EventRegistration from "../models/EventRegistration.js";
+import RegistrationForm from "../models/RegistrationForm.js";
+import { normalizeRegistrationForm } from "../utils/registrationForm.js";
+import { resolveEventRegistrationForm } from "../utils/eventRegistrationForm.js";
 
 const DEFAULT_EVENT_PAGE_SIZE = 9;
 const MAX_EVENT_PAGE_SIZE = 24;
@@ -133,12 +137,18 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
     existing?.requirements || [],
   );
   const parsedReminders = parseJsonField(body.reminders, "Reminders", existing?.reminders || []);
+  const parsedRegistrationForm = parseJsonField(
+    body.registrationForm,
+    "Registration form",
+    existing?.registrationFormId ? { version: 1, items: [] } : (existing?.registrationForm || { version: 1, items: [] }),
+  );
   for (const [field, value] of [
     ["tags", parsedTags],
     ["agenda", parsedAgenda],
     ["speakers", parsedSpeakers],
     ["requirements", parsedRequirements],
     ["reminders", parsedReminders],
+    ["registrationForm", parsedRegistrationForm],
   ]) {
     if (value?.error) {
       return {
@@ -313,6 +323,21 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
   }
   if (registrationMode === "none") capacity = undefined;
 
+  const form = normalizeRegistrationForm(parsedRegistrationForm);
+  if (form.issues) {
+    return {
+      error: "Please fix the registration form.",
+      field: "registrationForm",
+      issues: form.issues,
+    };
+  }
+  if (registrationMode === "none" && form.value.items.length) {
+    return { error: "Remove all form items before choosing No registration.", field: "registrationForm" };
+  }
+  const oldForm = normalizeRegistrationForm(existing?.registrationForm || { items: [] });
+  const formChanged = existing && JSON.stringify(oldForm.value?.items || []) !== JSON.stringify(form.value.items);
+  form.value.version = (existing?.registrationForm?.version || 1) + (formChanged ? 1 : 0);
+
   return {
     value: {
       eventType,
@@ -322,6 +347,13 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
       requirements: requirements.value,
       reminders: reminders.value,
       registrationMode,
+      registrationForm: form.value,
+      formChanged: Boolean(formChanged),
+      ...(body.registrationFormId !== undefined
+        ? { registrationFormId: body.registrationFormId || null }
+        : existing?.registrationFormId
+          ? { registrationFormId: existing.registrationFormId }
+          : {}),
       ...(capacity === undefined ? {} : { capacity }),
     },
   };
@@ -334,6 +366,29 @@ const validateImageFile = async (file, field) => {
     return { error: `${field} must be a JPEG, PNG, or WebP file`, field };
   }
   return { value: true };
+};
+
+const resolveRegistrationFormSelection = async ({ registrationMode, registrationFormId, existing, legacyFormProvided = false }) => {
+  const selectedId = registrationFormId === undefined
+    ? existing?.registrationFormId
+    : registrationFormId;
+  if (registrationMode === "none") {
+    if (selectedId) return { error: "Open events cannot use a registration form", field: "registrationFormId" };
+    return { value: { registrationFormId: null } };
+  }
+  if (!selectedId || !mongoose.isValidObjectId(selectedId)) {
+    if (legacyFormProvided && registrationMode === "required") return { value: { registrationFormId: null } };
+    if (existing?.registrationForm && !existing?.registrationFormId && registrationFormId === undefined) {
+      return { value: { registrationFormId: null } };
+    }
+    return { error: "Choose a registration form for this event", field: "registrationFormId" };
+  }
+  const form = await RegistrationForm.findById(selectedId);
+  if (!form) return { error: "Registration form not found", field: "registrationFormId" };
+  if (form.isArchived && String(selectedId) !== String(existing?.registrationFormId || "")) {
+    return { error: "Archived forms cannot be selected for new events", field: "registrationFormId" };
+  }
+  return { value: { registrationFormId: form._id } };
 };
 
 export const createEvent = async (req, res) => {
@@ -384,6 +439,12 @@ export const createEvent = async (req, res) => {
         ...(structured.issues ? { issues: structured.issues } : {}),
       });
     }
+    const formSelection = await resolveRegistrationFormSelection({
+      registrationMode: structured.value.registrationMode,
+      registrationFormId: structured.value.registrationFormId,
+      legacyFormProvided: body.registrationForm !== undefined,
+    });
+    if (formSelection.error) return res.status(400).json({ message: formSelection.error, field: formSelection.field });
 
     let image;
     const speakerImages = [];
@@ -450,6 +511,8 @@ export const createEvent = async (req, res) => {
         startDate: start,
         endDate: end,
         ...structured.value,
+        ...formSelection.value,
+        ...(formSelection.value.registrationFormId ? { registrationForm: undefined } : {}),
         ...(image || {}),
       });
     } catch (error) {
@@ -588,8 +651,17 @@ export const getEventById = async (req, res) => {
       });
     }
 
+    const registrationFormLocked = req.user?.role === "admin"
+      ? Boolean(await EventRegistration.exists({ event: event._id, submittedAt: { $exists: true } }))
+      : undefined;
+    const currentRegistrationForm = await resolveEventRegistrationForm(event);
+
     return res.status(200).json({
-      event: withStatus(event),
+      event: {
+        ...withStatus(event),
+        registrationForm: currentRegistrationForm,
+        ...(registrationFormLocked === undefined ? {} : { registrationFormLocked }),
+      },
     });
   } catch (error) {
     if (error.name === "CastError") {
@@ -703,6 +775,27 @@ export const updateEvent = async (req, res) => {
         ...(structured.issues ? { issues: structured.issues } : {}),
       });
     }
+    const formSelection = await resolveRegistrationFormSelection({
+      registrationMode: structured.value.registrationMode,
+      registrationFormId: structured.value.registrationFormId,
+      existing: event,
+      legacyFormProvided: req.body?.registrationForm !== undefined,
+    });
+    if (formSelection.error) return res.status(400).json({ message: formSelection.error, field: formSelection.field });
+    if ((!event.registrationFormId && structured.value.formChanged)
+      || String(formSelection.value.registrationFormId || "") !== String(event.registrationFormId || "")
+      || structured.value.registrationMode !== (event.registrationMode || "none")) {
+      const hasSubmissions = await EventRegistration.exists({
+        event: event._id,
+        submittedAt: { $exists: true },
+      });
+      if (hasSubmissions) {
+        return res.status(409).json({
+          message: "The registration form and mode are locked after the first submission.",
+          field: "registrationForm",
+        });
+      }
+    }
 
     const removeSpeakerImageKeys = parseJsonField(
       req.body?.removeSpeakerImageKeys,
@@ -797,6 +890,12 @@ export const updateEvent = async (req, res) => {
     event.requirements = structured.value.requirements;
     event.reminders = structured.value.reminders;
     event.registrationMode = structured.value.registrationMode;
+    if (formSelection.value.registrationFormId) {
+      event.registrationFormId = formSelection.value.registrationFormId;
+    } else if (structured.value.registrationFormId === null || structured.value.registrationMode === "none") {
+      event.registrationFormId = null;
+    }
+    if (!event.registrationFormId && req.body?.registrationForm !== undefined) event.registrationForm = structured.value.registrationForm;
     event.capacity = structured.value.capacity;
 
     try {

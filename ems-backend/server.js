@@ -5,6 +5,7 @@ import {connectDB} from './config/db.js';
 import routes from './routes/index.js';
 import cookieParser from 'cookie-parser';
 import { apiRateLimiter } from './middleware/rateLimiter.js';
+import { startRegistrationFormCleanup } from './services/registrationFormCleanupService.js';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.get("/", (req,res)=> {
 
 const startServer = async () => {
     await connectDB();
+    startRegistrationFormCleanup();
 
     app.listen(process.env.PORT, ()=> {
         console.log(`Listening to PORT: ${process.env.PORT}`)

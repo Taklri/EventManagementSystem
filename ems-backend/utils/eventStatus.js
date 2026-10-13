@@ -24,6 +24,7 @@ export const withStatus = (event) => {
   object.requirements = Array.isArray(object.requirements) ? object.requirements : [];
   object.reminders = Array.isArray(object.reminders) ? object.reminders : [];
   object.registrationMode = object.registrationMode || "none";
+  object.registrationForm = object.registrationForm || { version: 1, items: [] };
   for (const speaker of object.speakers) {
     if (speaker) delete speaker.photoPublicId;
   }

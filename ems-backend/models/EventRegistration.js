@@ -20,6 +20,16 @@ const eventRegistrationSchema = new mongoose.Schema(
     },
     registeredAt: { type: Date, default: Date.now },
     cancelledAt: { type: Date },
+    formVersion: { type: Number, default: 1 },
+    submittedAt: { type: Date },
+    answers: {
+      type: [{
+        key: { type: String, required: true },
+        label: { type: String, required: true },
+        value: { type: mongoose.Schema.Types.Mixed },
+      }],
+      default: [],
+    },
   },
   { timestamps: true },
 );

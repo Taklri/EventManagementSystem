@@ -110,17 +110,22 @@ const MyEventsPage = () => {
                       <dd>{registration.event.location}</dd>
                     </div>
                   </dl>
-                  {registration.attendance && (
-                    <p className="mt-3 text-xs font-medium text-emerald-700">
-                      {registration.attendance.timeOut ? 'Attendance completed' : 'Checked in'}
+                  {registration.submittedAt && (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Form submitted {new Date(registration.submittedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}
                     </p>
                   )}
-                  <Link
-                    to={`/events/${registration.event._id}`}
-                    className="mt-5 inline-flex text-sm font-semibold text-nu-navy underline"
-                  >
-                    View event
-                  </Link>
+                  {registration.attendance && (
+                    <div className="mt-3 space-y-1 text-xs text-emerald-700">
+                      <p className="font-semibold">{registration.attendance.timeOut ? 'Attendance completed' : 'Timed in'}</p>
+                      <p>Time in: {new Date(registration.attendance.timeIn).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</p>
+                      {registration.attendance.timeOut && <p>Time out: {new Date(registration.attendance.timeOut).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}</p>}
+                    </div>
+                  )}
+                  <div className="mt-5 flex flex-wrap gap-4">
+                    <Link to={`/events/${registration.event._id}`} className="inline-flex text-sm font-semibold text-nu-navy underline">View event</Link>
+                    {registration.submittedAt && <Link to={`/events/${registration.event._id}/register`} className="inline-flex text-sm font-semibold text-nu-navy underline">View form</Link>}
+                  </div>
                 </article>
               ),
           )}

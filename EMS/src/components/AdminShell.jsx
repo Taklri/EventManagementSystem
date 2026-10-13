@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { CalendarDays, ChevronDown, LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronDown,
+  FileQuestion,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  X,
+} from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import nuLogo from '../assets/NULOGO.svg';
@@ -87,6 +95,17 @@ const AdminShell = () => {
       >
         <CalendarDays size={17} aria-hidden="true" />
         Event management
+      </Link>
+      <Link
+        to="/admin/registration-forms"
+        onClick={() => setMenuOpen(false)}
+        aria-current={
+          location.pathname.startsWith('/admin/registration-forms') ? 'page' : undefined
+        }
+        className={`flex min-h-11 items-center gap-3 rounded-xl px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-gold focus-visible:ring-offset-2 ${location.pathname.startsWith('/admin/registration-forms') ? 'bg-nu-navy text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-nu-navy'}`}
+      >
+        <FileQuestion size={17} aria-hidden="true" />
+        Registration forms
       </Link>
     </nav>
   );

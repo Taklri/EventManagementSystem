@@ -4,7 +4,7 @@
 
 Admins create reusable registration forms from `/admin/registration-forms`, then select one on registration-required events. Supported item types are short text, long text, multiple choice, dropdown, radio, and instructions. Forms update in place without creating versions; submitted registrations keep answer and question-label snapshots. Existing embedded event forms remain readable as a legacy fallback.
 
-Student registration lives at `/events/:id/register`. The page displays only configured questions and instructions; the server derives account identity and stores it with the submitted answers. The server validates answers and the event window before creating a registration. A full event places the student on the waitlist. Cancelling before event start is supported; registering again requires another form submission.
+Student registration lives at `/events/:id/register`. The page displays only configured questions and instructions; the server derives account identity and stores it with the submitted answers. The server validates answers and the event window before creating a registration. A full event is closed to new registrations. Cancelling before event start is supported; the available slot reopens automatically and registering again requires another form submission.
 
 ### API
 
@@ -42,8 +42,8 @@ Attendance is available only when registration is required. The admin displays a
 | GET | `/api/admin/events/:id/attendance` | Admin | Attendance totals, including archived event history |
 | GET | `/api/admin/events/:id/attendance/records` | Admin | Attendance records, including archived event history |
 
-The student preview and confirmation endpoints accept `{ "token": "..." }`. QR sessions expire after at most 15 minutes and cannot outlive the event's attendance window. Time in opens 30 minutes before event start and closes at event end. Time out closes 30 minutes after event end. Archived and open events cannot generate or use attendance QR codes. Admins can still read historical totals after archive.
+The student preview and confirmation endpoints accept `{ "token": "..." }`. QR sessions expire after at most 15 minutes and cannot outlive the event's attendance window. Time in opens when the event starts and closes at event end. Time out closes 30 minutes after event end. Archived and open events cannot generate or use attendance QR codes. Admins can still read historical totals after archive.
 
 ## Verification scope
 
-Automated checks cover form definitions and answers, invalid submissions before persistence, capacity and waitlist assignment, QR preview without saving, time-in/time-out transitions, duplicate completed scans, and open or waitlisted attendance rejection. Existing backend route and auth tests plus frontend lint/build are part of the final check. A live database and phone-camera scan are separate manual checks.
+Automated checks cover form definitions and answers, invalid submissions before persistence, capacity rejection and reopening after cancellation, QR preview without saving, time-in/time-out transitions, duplicate completed scans, and open or ineligible attendance rejection. Existing backend route and auth tests plus frontend lint/build are part of the final check. A live database and phone-camera scan are separate manual checks.

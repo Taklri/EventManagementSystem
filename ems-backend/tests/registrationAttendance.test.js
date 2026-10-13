@@ -7,7 +7,7 @@ import EventAttendance from "../models/EventAttendance.js";
 import EventRegistration from "../models/EventRegistration.js";
 import User from "../models/User.js";
 import { registerForEvent } from "../controller/eventRegistrationController.js";
-import { previewAttendance, recordAttendance } from "../controller/eventAttendanceController.js";
+import { getStudentAttendance, previewAttendance, recordAttendance } from "../controller/eventAttendanceController.js";
 import { createEvent } from "../controller/createEventController.js";
 import { normalizeRegistrationForm, validateRegistrationAnswers } from "../utils/registrationForm.js";
 import eventRoutes from "../routes/EventRoutes/eventRoutes.js";
@@ -84,10 +84,11 @@ test("event creation accepts a form and rejects questions on open events", async
   assert.equal(Event.create.mock.calls[0].arguments[0].registrationForm.items[0].key, "course");
 });
 
-test("registration persists only after valid form submission and assigns waitlist status", async () => {
+test("registration closes at capacity and reopens when a cancellation frees a slot", async () => {
   mock.method(Event, "findById", async () => ({ ...event(), capacity: 1 }));
   mock.method(EventRegistration, "findOne", async () => null);
-  mock.method(EventRegistration, "countDocuments", async () => 1);
+  let registeredCount = 1;
+  mock.method(EventRegistration, "countDocuments", async () => registeredCount);
   mock.method(EventRegistration.prototype, "save", async function save() { return this; });
   const req = { params: { id: eventId }, user: { sub: studentId }, body: { answers: [] } };
   const invalid = response();
@@ -96,11 +97,18 @@ test("registration persists only after valid form submission and assigns waitlis
   assert.equal(EventRegistration.prototype.save.mock.callCount(), 0);
 
   req.body.answers = [{ key: "course", value: "Engineering" }, { key: "session", value: "Morning" }];
-  const valid = response();
-  await registerForEvent(req, valid);
-  assert.equal(valid.statusCode, 201);
-  assert.equal(valid.body.registration.status, "waitlisted");
-  assert.equal(valid.body.registration.answers[0].value, "Engineering");
+  const full = response();
+  await registerForEvent(req, full);
+  assert.equal(full.statusCode, 409);
+  assert.match(full.body.message, /registration will reopen/i);
+  assert.equal(EventRegistration.prototype.save.mock.callCount(), 0);
+
+  registeredCount = 0;
+  const reopened = response();
+  await registerForEvent(req, reopened);
+  assert.equal(reopened.statusCode, 201);
+  assert.equal(reopened.body.registration.status, "registered");
+  assert.equal(reopened.body.registration.answers[0].value, "Engineering");
   assert.equal(EventRegistration.prototype.save.mock.callCount(), 1);
 });
 
@@ -172,7 +180,7 @@ test("attendance rejects expired, wrong-event, and early QR scans", async () => 
     assert.equal(wrongEvent.statusCode, 400);
 
     req.body.token = jwt.sign({ purpose: "event-attendance", eventId }, process.env.JWT_SECRET_KEY, { expiresIn: 60 });
-    scheduled.startDate = new Date(Date.now() + 3_600_000);
+    scheduled.startDate = new Date(Date.now() + 5 * 60_000);
     scheduled.endDate = new Date(Date.now() + 7_200_000);
     const early = response();
     await previewAttendance(req, early);
@@ -182,6 +190,30 @@ test("attendance rejects expired, wrong-event, and early QR scans", async () => 
     if (oldSecret === undefined) delete process.env.JWT_SECRET_KEY;
     else process.env.JWT_SECRET_KEY = oldSecret;
   }
+});
+
+test("camera attendance stays closed until the event starts", async () => {
+  const scheduled = {
+    ...event(),
+    startDate: new Date(Date.now() + 5 * 60_000),
+    endDate: new Date(Date.now() + 3_600_000),
+  };
+  mock.method(Event, "findById", async () => scheduled);
+  mock.method(EventRegistration, "findOne", async () => ({ status: "registered" }));
+  mock.method(EventAttendance, "findOne", async () => null);
+  const req = { params: { id: eventId }, user: { sub: studentId }, body: {} };
+
+  const status = response();
+  await getStudentAttendance(req, status);
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.body.canSubmit, false);
+  assert.equal(status.body.action, "timeIn");
+  assert.match(status.body.message, /not open yet/);
+
+  const submission = response();
+  await recordAttendance(req, submission);
+  assert.equal(submission.statusCode, 400);
+  assert.match(submission.body.message, /not open yet/);
 });
 
 test("attendance rejects open events and waitlisted students before saving", async () => {

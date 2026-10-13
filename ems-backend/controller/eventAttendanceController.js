@@ -11,7 +11,6 @@ import {
 } from "../services/eventImageService.js";
 import { notifyAllAdmins, notifyStudent } from "../services/notificationService.js";
 
-const EARLY_CHECKIN_MS = 30 * 60 * 1000;
 const LATE_CHECKOUT_MS = 30 * 60 * 1000;
 const QR_LIFETIME_SECONDS = 15 * 60;
 const SUPPORTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -65,7 +64,7 @@ const attendanceContext = async (req) => {
   const attendance = await EventAttendance.findOne({ event: event._id, student: req.user.sub });
   const now = new Date();
   if (attendance?.timeOut) return { error: { status: 409, message: "Attendance already completed" } };
-  if (!attendance && (now.getTime() < event.startDate.getTime() - EARLY_CHECKIN_MS || now > event.endDate)) {
+  if (!attendance && (now < event.startDate || now > event.endDate)) {
     return { error: { status: 400, message: now < event.startDate ? "Time in is not open yet" : "Time in is closed" } };
   }
   if (attendance && now.getTime() > event.endDate.getTime() + LATE_CHECKOUT_MS) {
@@ -101,8 +100,7 @@ const studentAttendanceContext = async (req) => {
   }
   if (
     !attendance &&
-    (now.getTime() < event.startDate.getTime() - EARLY_CHECKIN_MS ||
-      now > event.endDate)
+    (now < event.startDate || now > event.endDate)
   ) {
     return {
       event,

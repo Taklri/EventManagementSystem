@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Archive, ArrowLeft, Camera, MapPin, Pencil, RotateCcw } from 'lucide-react';
+import { Archive, ArrowLeft, MapPin, Pencil, RotateCcw } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -131,54 +131,6 @@ const EventDetailsAside = ({ event, id, returnTo, changingArchive, dialogOpen, s
   </aside>
 );
 
-const ParticipationSummary = ({ registrationSummary, attendanceSummary, attendanceError }) => (
-  <div className="space-y-5">
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-nu-dark">Participation overview</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Registration and camera attendance totals for this event.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <Camera size={15} aria-hidden="true" className="text-nu-navy" />
-          Students submit photos for time in and time out.
-        </div>
-      </div>
-      {registrationSummary && (
-        <>
-          <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,140px),1fr))] gap-3">
-            {[
-              ['Registered', registrationSummary.registered],
-              ['Waitlisted', registrationSummary.waitlisted],
-              ['Cancelled', registrationSummary.cancelled],
-              ['Checked in', attendanceSummary?.checkedIn ?? 0],
-              ['Present now', attendanceSummary?.currentlyPresent ?? 0],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-xl bg-slate-50 px-4 py-3">
-                <p className="text-[11px] text-slate-500">{label}</p>
-                <p className="mt-1 text-xl font-semibold tracking-tight text-nu-dark">{value}</p>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-slate-500">
-            {registrationSummary.capacity
-              ? `Capacity: ${registrationSummary.capacity} · `
-              : 'Unlimited capacity · '}
-            {attendanceSummary?.checkedOut ?? 0} checked out
-          </p>
-        </>
-      )}
-      {attendanceError && (
-        <p role="alert" className="mt-4 text-sm text-red-700">
-          {attendanceError}
-        </p>
-      )}
-    </section>
-  </div>
-);
-
 const AdminEventDetailsPage = () => {
   const { id } = useParams();
   const location = useLocation();
@@ -197,12 +149,12 @@ const AdminEventDetailsPage = () => {
   const [changingArchive, setChangingArchive] = useState(false);
   const [archiveError, setArchiveError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [registrationSummary, setRegistrationSummary] = useState(null);
-  const [attendanceSummary, setAttendanceSummary] = useState(null);
-  const [attendanceError, setAttendanceError] = useState('');
 
   useEffect(() => {
-    setTab(requestedTab === 'registration' || requestedTab === 'attendance' ? requestedTab : 'details');
+    const nextTab =
+      requestedTab === 'registration' || requestedTab === 'attendance' ? requestedTab : 'details';
+    const timer = window.setTimeout(() => setTab(nextTab), 0);
+    return () => window.clearTimeout(timer);
   }, [id, requestedTab]);
 
   useEffect(() => {
@@ -227,27 +179,6 @@ const AdminEventDetailsPage = () => {
     if (tab !== 'registration' && tab !== 'attendance') return;
     sections.current?.scrollIntoView({ block: 'start' });
   }, [event, tab]);
-
-  useEffect(() => {
-    if (!event || event.registrationMode !== 'required') return undefined;
-    let active = true;
-    Promise.all([
-      adminApi.registrationSummary(id, accessToken),
-      adminApi.attendanceSummary(id, accessToken),
-    ])
-      .then(([registration, attendance]) => {
-        if (!active) return;
-        setRegistrationSummary(registration.registration);
-        setAttendanceSummary(attendance.attendance);
-        setAttendanceError('');
-      })
-      .catch(() => {
-        if (active) setAttendanceError('Unable to load registration and attendance totals.');
-      });
-    return () => {
-      active = false;
-    };
-  }, [event, id, accessToken]);
 
   const changeArchive = async (clickEvent) => {
     clickEvent.preventDefault();
@@ -365,14 +296,7 @@ const AdminEventDetailsPage = () => {
                   <AdminRegistrationRoster eventId={id} accessToken={accessToken} />
                 </TabsContent>
                 <TabsContent value="attendance">
-                  <div className="space-y-5">
-                    <ParticipationSummary
-                      registrationSummary={registrationSummary}
-                      attendanceSummary={attendanceSummary}
-                      attendanceError={attendanceError}
-                    />
-                    <AdminAttendanceTable eventId={id} accessToken={accessToken} />
-                  </div>
+                  <AdminAttendanceTable eventId={id} accessToken={accessToken} />
                 </TabsContent>
               </>
             )}

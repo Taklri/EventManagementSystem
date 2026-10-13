@@ -106,9 +106,7 @@ const EventRegistrationPage = () => {
         ...current,
         saving: false,
         notice:
-          result.registration.status === 'waitlisted'
-            ? 'Your form was submitted. You are on the waitlist.'
-            : 'Your form was submitted. You are registered.',
+          'Your form was submitted. You are registered.',
       }));
     } catch (error) {
       const nextErrors = {};
@@ -165,8 +163,10 @@ const EventRegistrationPage = () => {
       </div>
     );
 
-  const activeRegistration = data.registration && data.registration.status !== 'cancelled';
-  const canRegister = !data.event.isArchived && data.event.status === 'Coming Soon';
+  const activeRegistration = data.registration && data.registration.status === 'registered';
+  const canRegister = !data.event.isArchived
+    && data.event.status === 'Coming Soon'
+    && !data.isFull;
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
@@ -192,9 +192,7 @@ const EventRegistrationPage = () => {
           aria-live="polite"
         >
           <h2 className="text-lg font-semibold text-nu-dark">
-            {data.registration.status === 'waitlisted'
-              ? 'You are on the waitlist'
-              : 'You are registered'}
+            You are registered
           </h2>
           {state.notice && <p className="mt-2 text-sm text-emerald-700">{state.notice}</p>}
           {data.registration.submittedAt && (
@@ -222,7 +220,9 @@ const EventRegistrationPage = () => {
         </section>
       ) : !canRegister ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
-          Registration has closed for this event.
+          {data.isFull
+            ? 'Registration is currently full. It will reopen if a registered student cancels.'
+            : 'Registration has closed for this event.'}
         </section>
       ) : (
         <form
@@ -242,7 +242,7 @@ const EventRegistrationPage = () => {
             </p>
           )}
           <p className="mt-4 text-xs leading-5 text-slate-500">
-            Your registration or waitlist place is saved only after you submit this form.
+            Your registration is saved only after you submit this form.
           </p>
           <div className="mt-6 space-y-7">
             {data.form.items.map((item) => {

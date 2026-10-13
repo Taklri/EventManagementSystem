@@ -1739,7 +1739,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
             {registrationMode === 'required' && (
               <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
                 Registration closes when the event starts. Students may cancel before then; when
-                capacity is full, new registrations enter a waitlist.
+                capacity is full, new registrations are closed until a registered student cancels.
               </p>
             )}
           </section>

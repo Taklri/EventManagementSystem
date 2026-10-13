@@ -187,7 +187,9 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                 {capacityState.capacity && (
                   <p className="mt-1 text-xs text-slate-500">
                     {capacityState.registeredCount} of {capacityState.capacity} places filled
-                    {capacityState.isFull ? ' · new registrations join the waitlist' : ''}.
+                    {capacityState.isFull
+                      ? ' · registration is full and will reopen if someone cancels'
+                      : ''}.
                   </p>
                 )}
                 {registration?.status === 'registered' && (
@@ -204,14 +206,14 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                   </p>
                 )}
                 {!registration || registration.status === 'cancelled' ? (
-                  event.isArchived || event.status !== 'Coming Soon' ? (
+                  event.isArchived || event.status !== 'Coming Soon' || capacityState.isFull ? (
                     <Button type="button" className="mt-4 w-full" disabled>
-                      Registration closed
+                      {capacityState.isFull ? 'Registration full' : 'Registration closed'}
                     </Button>
                   ) : (
                     <Button asChild className="mt-4 w-full">
                       <Link to={`/events/${id}/register`}>
-                        {capacityState.isFull ? 'Complete form to join waitlist' : 'Complete registration'}
+                        Complete registration
                       </Link>
                     </Button>
                   )
@@ -243,6 +245,14 @@ const EventDetails = ({ id, returnTo, accessToken }) => {
                     {attendance?.timeOut ? (
                       <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-semibold text-emerald-700">
                         Attendance complete. Your time in and time out are saved.
+                      </p>
+                    ) : !attendance?.timeIn && event.status === 'Coming Soon' ? (
+                      <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs leading-5 text-slate-600">
+                        Time in opens when the event starts on {attendanceTime(event.startDate)}.
+                      </p>
+                    ) : !attendance?.timeIn && event.status !== 'Ongoing' ? (
+                      <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs leading-5 text-slate-600">
+                        Time in is closed for this event.
                       </p>
                     ) : (
                       <Button asChild className="mt-4 w-full">

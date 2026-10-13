@@ -58,6 +58,13 @@ export const authApi = {
   logout: () => apiRequest('/users/logout', { body: {} }),
 };
 
+export const notificationsApi = {
+  list: (token) => apiRequest('/notifications', { token }),
+  markRead: (id, token) =>
+    apiRequest(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', token }),
+  markAllRead: (token) => apiRequest('/notifications/read-all', { method: 'PATCH', token }),
+};
+
 export const eventsApi = {
   list: ({ page = 1, limit = 9, search = '', status = 'active' } = {}, token) =>
     apiRequest(

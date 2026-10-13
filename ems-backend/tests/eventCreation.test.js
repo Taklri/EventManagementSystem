@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, mock, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import { Writable } from "node:stream";
 import { v2 as cloudinary } from "cloudinary";
 import Event from "../models/Event.js";
@@ -26,6 +26,9 @@ const response = () => ({ status(code) { this.statusCode = code; return this; },
 const request = (body = base, file) => ({ body, file, user: { sub: adminId, role: "admin" } });
 const saved = (data) => ({ ...data, toObject() { const { toObject, populate, ...fields } = this; return fields; }, async populate() { return this; } });
 afterEach(() => mock.restoreAll());
+beforeEach(() => {
+  mock.method(User, "find", () => ({ select: async () => [] }));
+});
 
 test("creates a text-only event with campus dates and hides internal identifiers", async () => {
   mock.method(Event, "create", async (data) => saved(data));

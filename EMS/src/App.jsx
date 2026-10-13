@@ -11,6 +11,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import StudentShell from './components/StudentShell';
 import EventDetailsPage from './pages/EventDetailsPage';
 import MyEventsPage from './pages/MyEventsPage';
+import NotificationsPage from './pages/NotificationsPage';
 import AttendancePage from './pages/AttendancePage';
 import AdminShell from './components/AdminShell';
 import AdminDashboardPage from './pages/AdminDashboardPage';
@@ -95,6 +96,7 @@ const RouteContent = () => {
         <Route path="/home" element={<HomePage />} />
         <Route path="/events/:id" element={<EventDetailsPage />} />
         <Route path="/my-events" element={<MyEventsPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/attendance/:id" element={<AttendancePage />} />
       </Route>
       <Route

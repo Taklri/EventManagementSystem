@@ -4,6 +4,7 @@ import { withStatus } from "../utils/eventStatus.js";
 import mongoose from "mongoose";
 import { fileTypeFromBuffer } from "file-type";
 import { uploadEventImage, removeEventImage } from "../services/eventImageService.js";
+import { notifyAllStudents } from "../services/notificationService.js";
 
 const DEFAULT_EVENT_PAGE_SIZE = 9;
 const MAX_EVENT_PAGE_SIZE = 24;
@@ -459,6 +460,12 @@ export const createEvent = async (req, res) => {
     }
 
     if (organizer) await event.populate("organizer", "firstName middleName lastName email");
+    await notifyAllStudents({
+      type: "event_created",
+      title: "New event",
+      message: `A new event is available: ${event.title}.`,
+      event: event._id,
+    });
     return res.status(201).json({
       message: "Event created successfully",
       event: withStatus(event),

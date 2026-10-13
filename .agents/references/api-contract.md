@@ -24,7 +24,12 @@
 | `POST` | `/api/users/reset-password` | Public, rate-limited | Set a new password with a valid reset token. |
 | `POST` | `/api/users/refresh` | Refresh cookie | Refresh the access token. |
 | `POST` | `/api/users/logout` | Refresh cookie when present | Clear the refresh-token cookie. |
+| `GET` | `/api/notifications` | Bearer access token + `student` role | List the signed-in student's notifications, newest first, with `unreadCount`. |
+| `PATCH` | `/api/notifications/read-all` | Bearer access token + `student` role | Mark all of that student's unread notifications as read. |
+| `PATCH` | `/api/notifications/:id/read` | Bearer access token + `student` role | Mark one of that student's notifications as read. |
 | `GET` | `/api/admin/dashboard` | Bearer access token + `admin` role | Return event metrics and recently updated non-archived events for the admin dashboard. |
+
+Student registration and attendance notifications are created only after those actions succeed. Creating an event notifies every current student that the event is available. `GET /api/notifications` returns `{ notifications, unreadCount }`. Each notification includes `_id`, `type`, `title`, `message`, `event`, `readAt`, and `createdAt`. An admin token returns `403`. A notification id that does not belong to the student returns `404`.
 
 Registration defaults new users to the `student` role. The current user route does not expose the `getUsers` controller as an endpoint.
 

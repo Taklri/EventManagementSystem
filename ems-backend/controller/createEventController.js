@@ -86,6 +86,28 @@ const parseAgendaDate = (value) => {
   return parseEventDate(value);
 };
 
+const agendaDateKey = (value) => {
+  const parsed = parseAgendaDate(value);
+  return parsed ? parsed.toISOString() : null;
+};
+
+const agendasMatch = (left, right) => {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+
+  return left.every((item, index) => {
+    const other = right[index];
+    if (!item || typeof item !== "object" || !other || typeof other !== "object") return false;
+    const leftSpeakers = Array.isArray(item.speakerKeys) ? item.speakerKeys : [];
+    const rightSpeakers = Array.isArray(other.speakerKeys) ? other.speakerKeys : [];
+    return item.title === other.title
+      && (item.description || "") === (other.description || "")
+      && agendaDateKey(item.startDate) === agendaDateKey(other.startDate)
+      && agendaDateKey(item.endDate) === agendaDateKey(other.endDate)
+      && leftSpeakers.length === rightSpeakers.length
+      && leftSpeakers.every((key, speakerIndex) => key === rightSpeakers[speakerIndex]);
+  });
+};
+
 const getCampusDay = (date) => {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Manila",
@@ -206,6 +228,7 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
     const message = "Agenda can have up to 40 items";
     return { error: message, field: "agenda", issues: [{ path: "agenda", message }] };
   }
+  const agendaChanged = !existing || !agendasMatch(parsedAgenda, existing.agenda || []);
   const agenda = [];
   const agendaIssues = [];
   for (const [index, item] of parsedAgenda.entries()) {
@@ -300,6 +323,21 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
     agenda.push({ title, ...(description ? { description } : {}), startDate, endDate, speakerKeys: speakerKeysForItem });
   }
 
+  if (agendaChanged) {
+    let previousEndDate = null;
+    for (const [index, item] of parsedAgenda.entries()) {
+      const startDate = parseAgendaDate(item?.startDate);
+      const endDate = parseAgendaDate(item?.endDate);
+      if (startDate && previousEndDate && startDate < previousEndDate) {
+        agendaIssues.push({
+          path: `agenda.${index}.startDate`,
+          message: "Program items must be ordered and cannot overlap the previous item.",
+        });
+      }
+      if (endDate) previousEndDate = endDate;
+    }
+  }
+
   if (agendaIssues.length) {
     return {
       error: "Please fix the highlighted agenda items.",
@@ -350,6 +388,7 @@ const readStructuredFields = (body, { existing = null, rangeStart = null, rangeE
       registrationMode,
       registrationForm: form.value,
       formChanged: Boolean(formChanged),
+      agendaChanged,
       ...(body.registrationFormId !== undefined
         ? { registrationFormId: body.registrationFormId || null }
         : existing?.registrationFormId
@@ -427,6 +466,7 @@ export const createEvent = async (req, res) => {
     const today = getCampusDay(new Date());
     if (getCampusDay(start) < today) return res.status(400).json({ message: "Start date cannot be before today", field: "startDate" });
     if (getCampusDay(end) < today) return res.status(400).json({ message: "End date cannot be before today", field: "endDate" });
+    if (start <= new Date()) return res.status(400).json({ message: "Start date and time must be in the future", field: "startDate" });
     if (end <= start) return res.status(400).json({ message: "End date must be after the start date", field: "endDate" });
     if (!mongoose.isValidObjectId(req.user?.sub)) {
       return res.status(401).json({ message: "Invalid creator identity" });
@@ -892,7 +932,7 @@ export const updateEvent = async (req, res) => {
     }
     event.eventType = structured.value.eventType;
     event.tags = structured.value.tags;
-    event.agenda = structured.value.agenda;
+    if (structured.value.agendaChanged) event.agenda = structured.value.agenda;
     event.speakers = structured.value.speakers;
     event.requirements = structured.value.requirements;
     event.reminders = structured.value.reminders;

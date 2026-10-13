@@ -34,12 +34,12 @@
 | `POST` | `/api/users/reset-password` | Public, rate-limited | Set a new password with a valid reset token. |
 | `POST` | `/api/users/refresh` | Refresh cookie | Refresh the access token. |
 | `POST` | `/api/users/logout` | Refresh cookie when present | Clear the refresh-token cookie. |
-| `GET` | `/api/notifications` | Bearer access token + `student` role | List the signed-in student's notifications, newest first, with `unreadCount`. |
-| `PATCH` | `/api/notifications/read-all` | Bearer access token + `student` role | Mark all of that student's unread notifications as read. |
-| `PATCH` | `/api/notifications/:id/read` | Bearer access token + `student` role | Mark one of that student's notifications as read. |
+| `GET` | `/api/notifications` | Bearer access token + `student` or `admin` role | List the signed-in user's notifications, newest first, with `unreadCount`. |
+| `PATCH` | `/api/notifications/read-all` | Bearer access token + `student` or `admin` role | Mark all of that user's unread notifications as read. |
+| `PATCH` | `/api/notifications/:id/read` | Bearer access token + `student` or `admin` role | Mark one of that user's notifications as read. |
 | `GET` | `/api/admin/dashboard` | Bearer access token + `admin` role | Return event metrics and recently updated non-archived events for the admin dashboard. |
 
-Student registration and attendance notifications are created only after those actions succeed. Creating an event notifies every current student that the event is available. `GET /api/notifications` returns `{ notifications, unreadCount }`. Each notification includes `_id`, `type`, `title`, `message`, `event`, `readAt`, and `createdAt`. An admin token returns `403`. A notification id that does not belong to the student returns `404`.
+Student registration and attendance notifications are created only after those actions succeed. Creating an event notifies every current student that the event is available. A successful registration, waitlist placement, cancellation, time in, or time out also notifies every current admin. `GET /api/notifications` returns `{ notifications, unreadCount }`. Each notification includes `_id`, `type`, `title`, `message`, `event`, `eventDetails`, `actorName`, `actorStudentId`, `readAt`, and `createdAt`. `actorName` and `actorStudentId` are empty on student notices. `event` remains the event id used for navigation. `eventDetails` is `null` when the event no longer exists; otherwise it includes `id`, `title`, `description`, `location`, `startDate`, `endDate`, `eventType`, `organizerName`, `imageUrl`, `isArchived`, and the computed `status`. A notification id that does not belong to the signed-in user returns `404`.
 
 Registration defaults new users to the `student` role. The current user route does not expose the `getUsers` controller as an endpoint.
 
@@ -85,6 +85,9 @@ The admin dashboard response is `{ metrics: { total, upcoming, ongoing, archived
 | `POST` | `/api/admin/events/:id/attendance/session` | Bearer token + `admin` role | Legacy QR-session endpoint retained for already-issued links; the portal uses camera photos instead. |
 | `GET` | `/api/admin/events/:id/attendance` | Bearer token + `admin` role | Return attendance totals. |
 | `GET` | `/api/admin/events/:id/attendance/records` | Bearer token + `admin` role | Return attendance records for an event. |
+| `GET` | `/api/admin/registration-forms/:id/responses` | Bearer token + `admin` role | Return paginated responses submitted through a reusable registration form. |
+| `GET` | `/api/admin/registration-forms/:id/responses/:responseId` | Bearer token + `admin` role | Return one submitted response and its answer snapshot. |
+| `GET` | `/api/admin/registration-forms/:id/responses/export` | Bearer token + `admin` role | Download a formatted Excel workbook for a reusable form's responses. |
 
 ### Event discovery queries
 
@@ -109,6 +112,8 @@ Every event response includes safe defaults for fields added after the initial s
 ## Reusable registration forms
 
 Admin form endpoints are protected by the admin role. They support list, create, read, update, archive, and unarchive operations under `/api/admin/registration-forms`. Form updates modify the current questions in place; submitted registrations retain answer and question-label snapshots. New required-registration events use `registrationFormId`; open events clear form and capacity. Archived forms stay available to attached events and are cleaned up after 30 days only when unreferenced.
+
+`GET /api/admin/registration-forms/:id/responses` returns `{ form, responses, pagination }` for all submitted registrations belonging to events that use the reusable form. It accepts `page`, `limit`, and `search`; response students include `studentId`, `name`, `program`, and `yearLevel`. `GET /api/admin/registration-forms/:id/responses/:responseId` returns one response for the dedicated admin answer view. `GET /api/admin/registration-forms/:id/responses/export` returns a formatted `.xlsx` workbook with response and question sheets.
 
 ## Response conventions
 

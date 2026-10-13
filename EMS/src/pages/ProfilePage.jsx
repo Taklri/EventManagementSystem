@@ -258,14 +258,14 @@ export default function ProfilePage() {
   const confirmError = passwordTouched && passwordForm.confirmPassword !== passwordForm.password
     ? (passwordForm.confirmPassword ? 'Passwords do not match.' : 'Confirm password is required.')
     : '';
-  const passwordRules = passwordTouched ? [
+  const passwordRules = [
     passwordForm.password.length < 8 && 'Password must be at least 8 characters long',
     !/\p{Lu}/u.test(passwordForm.password) && 'Password must contain at least one uppercase letter',
     !/\p{Ll}/u.test(passwordForm.password) && 'Password must contain at least one lowercase letter',
     !/\d/.test(passwordForm.password) && 'Password must contain at least one number',
     !/[^\p{L}\p{N}\s]/u.test(passwordForm.password) && 'Password must contain a symbol',
     passwordForm.confirmPassword !== passwordForm.password && (passwordForm.confirmPassword ? 'Passwords do not match.' : 'Confirm password is required'),
-  ].filter(Boolean) : [];
+  ].filter(Boolean);
 
   function applyProfile(user) {
     setProfile(user);

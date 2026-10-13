@@ -14,6 +14,25 @@ export const notifyStudent = async ({ user, type, title, message, event }) => {
   await writeNotifications([{ user, type, title, message, event }]);
 };
 
+export const notifyAllAdmins = async ({ type, title, message, event, actorName, actorStudentId }) => {
+  try {
+    const admins = await User.find({ role: "admin" }).select("_id");
+    await writeNotifications(
+      admins.map((admin) => ({
+        user: admin._id,
+        type,
+        title,
+        message,
+        event,
+        actorName: actorName || "",
+        actorStudentId: actorStudentId || "",
+      })),
+    );
+  } catch (error) {
+    console.error("Notification write failed");
+  }
+};
+
 export const notifyAllStudents = async ({ type, title, message, event }) => {
   try {
     const students = await User.find({ role: "student" }).select("_id");

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  Bell,
   CalendarDays,
   ChevronDown,
   FileQuestion,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { notificationsApi } from '../lib/api';
 import nuLogo from '../assets/NULOGO.svg';
 
 const AccountSummary = ({ name, initials, imageUrl, handleSignOut, signingOut, error }) => {
@@ -68,14 +70,36 @@ const AccountSummary = ({ name, initials, imageUrl, handleSignOut, signingOut, e
 };
 
 const AdminShell = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, accessToken } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Administrator';
   const initials =
     [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toLocaleUpperCase() || 'A';
+
+  useEffect(() => {
+    let active = true;
+    notificationsApi
+      .list(accessToken)
+      .then((data) => {
+        if (active) setUnreadCount(data.unreadCount || 0);
+      })
+      .catch(() => {
+        if (active) setUnreadCount(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accessToken, location.pathname]);
+
+  useEffect(() => {
+    const onChange = (event) => setUnreadCount(event.detail?.unreadCount || 0);
+    window.addEventListener('admin-notifications-changed', onChange);
+    return () => window.removeEventListener('admin-notifications-changed', onChange);
+  }, []);
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -108,6 +132,20 @@ const AdminShell = () => {
       >
         <CalendarDays size={17} aria-hidden="true" />
         Event management
+      </Link>
+      <Link
+        to="/admin/notifications"
+        onClick={() => setMenuOpen(false)}
+        aria-current={location.pathname.startsWith('/admin/notifications') ? 'page' : undefined}
+        className={`flex min-h-11 items-center gap-3 rounded-xl px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-gold focus-visible:ring-offset-2 ${location.pathname.startsWith('/admin/notifications') ? 'bg-nu-navy text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-nu-navy'}`}
+      >
+        <Bell size={17} aria-hidden="true" />
+        <span className="min-w-0 flex-1">Notifications</span>
+        {unreadCount > 0 && (
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${location.pathname.startsWith('/admin/notifications') ? 'bg-white text-nu-navy' : 'bg-nu-navy text-white'}`}>
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
       </Link>
       <Link
         to="/admin/students"

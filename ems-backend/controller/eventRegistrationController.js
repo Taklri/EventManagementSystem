@@ -6,7 +6,20 @@ import User from "../models/User.js";
 import { withStatus } from "../utils/eventStatus.js";
 import { validateRegistrationAnswers } from "../utils/registrationForm.js";
 import { resolveEventRegistrationForm } from "../utils/eventRegistrationForm.js";
-import { notifyStudent } from "../services/notificationService.js";
+import { notifyAllAdmins, notifyStudent } from "../services/notificationService.js";
+
+const studentActor = async (userId) => {
+  try {
+    const student = await User.findById(userId).select("firstName middleName lastName studentId");
+    if (!student) return { actorName: "", actorStudentId: "" };
+    return {
+      actorName: [student.firstName, student.middleName, student.lastName].filter(Boolean).join(" "),
+      actorStudentId: student.studentId || "",
+    };
+  } catch {
+    return { actorName: "", actorStudentId: "" };
+  }
+};
 
 const registrationPayload = (registration) => ({
   _id: registration._id,
@@ -59,7 +72,7 @@ export const getRegistrationForm = async (req, res) => {
         "title startDate endDate registrationMode registrationForm registrationFormId capacity isArchived",
       ),
       User.findById(req.user.sub).select(
-        "firstName middleName lastName studentId email",
+        "firstName middleName lastName studentId email program yearLevel",
       ),
     ]);
     if (!event) return res.status(404).json({ message: "Event not found" });
@@ -84,6 +97,8 @@ export const getRegistrationForm = async (req, res) => {
           .join(" "),
         studentId: student.studentId,
         email: student.email,
+        program: student.program || "",
+        yearLevel: student.yearLevel || "",
       },
       registration: registration ? registrationPayload(registration) : null,
     });
@@ -157,6 +172,17 @@ export const registerForEvent = async (req, res) => {
           : `You are registered for ${event.title}.`,
       event: event._id,
     });
+    const actor = await studentActor(req.user.sub);
+    await notifyAllAdmins({
+      type: status === "waitlisted" ? "waitlisted" : "registered",
+      title: status === "waitlisted" ? "Waitlist" : "New registration",
+      message:
+        status === "waitlisted"
+          ? `${actor.actorName || "A student"} joined the waitlist for ${event.title}.`
+          : `${actor.actorName || "A student"} registered for ${event.title}.`,
+      event: event._id,
+      ...actor,
+    });
 
     return res.status(201).json({
       message:
@@ -208,6 +234,14 @@ export const cancelEventRegistration = async (req, res) => {
       title: "Registration cancelled",
       message: `Your registration for ${event.title} was cancelled.`,
       event: event._id,
+    });
+    const actor = await studentActor(req.user.sub);
+    await notifyAllAdmins({
+      type: "registration_cancelled",
+      title: "Registration cancelled",
+      message: `${actor.actorName || "A student"} cancelled registration for ${event.title}.`,
+      event: event._id,
+      ...actor,
     });
     return res
       .status(200)

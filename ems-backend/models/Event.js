@@ -199,6 +199,12 @@ eventSchema.pre("validate", function () {
     this.invalidate("agenda", "Each agenda item must end after it starts");
   }
 
+  if ((this.isNew || this.isModified("agenda")) && this.agenda?.some((item, index) => (
+    index > 0 && item.startDate < this.agenda[index - 1].endDate
+  ))) {
+    this.invalidate("agenda", "Agenda items must be ordered and cannot overlap");
+  }
+
   const speakerKeys = new Set((this.speakers || []).map((speaker) => speaker.clientKey));
   if (this.agenda?.some((item) => item.speakerKeys?.some((key) => !speakerKeys.has(key)))) {
     this.invalidate("agenda", "Agenda items can only reference speakers in this event");

@@ -10,3 +10,22 @@ export const getCampusToday = () => {
 
   return `${getPart('year')}-${getPart('month')}-${getPart('day')}`
 }
+
+export const getCampusNowParts = () => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+
+  const getPart = (type) => parts.find((part) => part.type === type)?.value
+  return {
+    day: `${getPart('year')}-${getPart('month')}-${getPart('day')}`,
+    time: `${getPart('hour')}:${getPart('minute')}`,
+  }
+}

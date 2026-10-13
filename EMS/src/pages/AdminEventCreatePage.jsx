@@ -12,7 +12,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { useAuth } from '../context/AuthContext';
 import { adminApi } from '../lib/api';
-import { getCampusToday } from '../lib/campusDate';
+import { getCampusNowParts, getCampusToday } from '../lib/campusDate';
 import { organizerName, toCampusInputParts } from '../lib/eventFormatting';
 import { toast } from 'sonner';
 
@@ -91,6 +91,38 @@ const minTime = (values) => {
   );
 };
 
+const campusMinutes = (day, time) => {
+  if (!validDay(day) || !validTime(time)) return null;
+  const [year, month, date] = day.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  return Math.floor(Date.UTC(year, month - 1, date, hour, minute) / 60000);
+};
+
+const campusPartsFromMinutes = (minutes) => {
+  const value = new Date(minutes * 60000);
+  return {
+    day: value.toISOString().slice(0, 10),
+    time: value.toISOString().slice(11, 16),
+  };
+};
+
+const shiftCampusParts = (day, time, delta) => {
+  const minutes = campusMinutes(day, time);
+  return minutes === null ? null : campusPartsFromMinutes(minutes + delta);
+};
+
+const persistedAgendaMinutes = (value) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : Math.floor(date.getTime() / 60000);
+};
+
+const hasAgendaOverlap = (agenda = []) => agenda.some((item, index) => {
+  if (index === 0) return false;
+  const start = persistedAgendaMinutes(item?.startDate);
+  const previousEnd = persistedAgendaMinutes(agenda[index - 1]?.endDate);
+  return start !== null && previousEnd !== null && start < previousEnd;
+});
+
 const laterDay = (values) =>
   values
     .filter((value) => validDay(value))
@@ -132,7 +164,7 @@ const structuredSchema = {
   registrationFormId: z.string().optional(),
 };
 
-const buildSchema = (allowPastDates = false) =>
+const buildSchema = (allowPastDates = false, allowLegacyAgendaOverlap = false) =>
   z
     .object({
       title: requiredText('Title', 3, 120),
@@ -147,11 +179,24 @@ const buildSchema = (allowPastDates = false) =>
     })
     .superRefine((values, context) => {
       const today = getCampusToday();
+      const campusNow = getCampusNowParts();
       if (!allowPastDates && validDay(values.startDay) && values.startDay < today) {
         context.addIssue({
           code: 'custom',
           path: ['startDay'],
           message: 'Start date cannot be before today.',
+        });
+      }
+      if (
+        !allowPastDates &&
+        validDay(values.startDay) &&
+        validTime(values.startTime) &&
+        `${values.startDay}T${values.startTime}` <= `${campusNow.day}T${campusNow.time}`
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['startTime'],
+          message: 'Start date and time must be in the future.',
         });
       }
       if (!allowPastDates && validDay(values.endDay) && values.endDay < today) {
@@ -252,11 +297,28 @@ const buildSchema = (allowPastDates = false) =>
             });
           }
         });
+        if (!allowLegacyAgendaOverlap && index > 0) {
+          const previous = values.agenda[index - 1];
+          const hasComparableTimes =
+            validDay(item.startDay) &&
+            validTime(item.startTime) &&
+            validDay(previous.endDay) &&
+            validTime(previous.endTime);
+          if (
+            hasComparableTimes &&
+            `${item.startDay}T${item.startTime}` < `${previous.endDay}T${previous.endTime}`
+          ) {
+            context.addIssue({
+              code: 'custom',
+              path: ['agenda', index, 'startTime'],
+              message: 'Program items cannot overlap or be out of order.',
+            });
+          }
+        }
       });
     });
 
 const schema = buildSchema();
-const editSchema = buildSchema(true);
 
 const Field = ({
   id,
@@ -346,8 +408,12 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     };
   });
 
+  const validationSchema = editing
+    ? buildSchema(true, hasAgendaOverlap(event?.agenda || []))
+    : schema;
+
   const form = useForm({
-    resolver: zodResolver(editing ? editSchema : schema),
+    resolver: zodResolver(validationSchema),
     mode: 'onChange',
     reValidateMode: 'onChange',
     defaultValues: {
@@ -381,6 +447,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     register,
     handleSubmit,
     getValues,
+    clearErrors,
     setError,
     setValue,
     trigger,
@@ -590,6 +657,12 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
   const registrationMode = useWatch({ control: form.control, name: 'registrationMode' });
   const registrationFormId = useWatch({ control: form.control, name: 'registrationFormId' });
   const speakerValues = useWatch({ control: form.control, name: 'speakers' });
+  const campusNow = getCampusNowParts();
+  const eventStartMinutes = campusMinutes(startDay, startTime);
+  const eventEndMinutes = campusMinutes(endDay, endTime);
+  const scheduleStartsInFuture =
+    eventStartMinutes !== null &&
+    `${startDay}T${startTime}` > `${campusNow.day}T${campusNow.time}`;
 
   const eventScheduleReady =
     validDay(startDay) &&
@@ -597,15 +670,20 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     validDay(endDay) &&
     validTime(endTime) &&
     `${endDay}T${endTime}` > `${startDay}T${startTime}` &&
-    (editing || (startDay >= getCampusToday() && endDay >= getCampusToday()));
+    (editing || (startDay >= getCampusToday() && endDay >= getCampusToday() && scheduleStartsInFuture));
 
-  const getAgendaTimeBounds = (agendaValue, phase) => {
+  const getAgendaTimeBounds = (agendaValue, phase, index) => {
+    if (!agendaValue) return { minTime: undefined, maxTime: undefined, minTimeExclusive: false };
     const day = phase === 'start' ? agendaValue.startDay : agendaValue.endDay;
     const minimums = [];
     const maximums = [];
 
     if (phase === 'start') {
       if (day === startDay) minimums.push(startTime);
+      const previous = agendaValues[index - 1];
+      if (previous && previous.endDay === day && validTime(previous.endTime)) {
+        minimums.push(previous.endTime);
+      }
       if (day === endDay) maximums.push(endTime);
     } else {
       if (day === startDay) minimums.push(startTime);
@@ -621,17 +699,128 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     };
   };
 
+  const agendaCandidateFitsEvent = (items) => {
+    if (eventStartMinutes === null || eventEndMinutes === null) return false;
+    let previousEnd = null;
+    return items.every((item) => {
+      const itemStart = campusMinutes(item.startDay, item.startTime);
+      const itemEnd = campusMinutes(item.endDay, item.endTime);
+      if (
+        itemStart === null ||
+        itemEnd === null ||
+        itemEnd <= itemStart ||
+        itemStart < eventStartMinutes ||
+        itemEnd > eventEndMinutes ||
+        (previousEnd !== null && itemStart < previousEnd)
+      ) {
+        return false;
+      }
+      previousEnd = itemEnd;
+      return true;
+    });
+  };
+
+  const nextAgendaStartMinutes = agendaValues.length
+    ? campusMinutes(
+        agendaValues[agendaValues.length - 1]?.endDay,
+        agendaValues[agendaValues.length - 1]?.endTime,
+      )
+    : eventStartMinutes;
+  const canAddAgenda =
+    eventScheduleReady &&
+    agendaFields.fields.length < 40 &&
+    nextAgendaStartMinutes !== null &&
+    eventEndMinutes !== null &&
+    nextAgendaStartMinutes < eventEndMinutes;
+
+  const defaultAgendaSlot = () => {
+    const start = campusPartsFromMinutes(nextAgendaStartMinutes);
+    const end = campusPartsFromMinutes(Math.min(nextAgendaStartMinutes + 60, eventEndMinutes));
+    return {
+      startDay: start.day,
+      startTime: start.time,
+      endDay: end.day,
+      endTime: end.time,
+    };
+  };
+
   const updateSchedule = async (name, value) => {
     setValue(name, value, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
     await trigger(['startDay', 'startTime', 'endDay', 'endTime', 'agenda']);
   };
 
   const updateAgendaSchedule = async (index, name, value) => {
-    setValue(`agenda.${index}.${name}`, value, {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    });
+    const currentAgenda = getValues('agenda') || [];
+    const currentItem = currentAgenda[index];
+    if (!currentItem) return;
+
+    const nextAgenda = currentAgenda.map((item) => ({
+      ...item,
+      speakerKeys: Array.isArray(item.speakerKeys) ? [...item.speakerKeys] : [],
+    }));
+    nextAgenda[index] = { ...nextAgenda[index], [name]: value };
+
+    const currentStart = campusMinutes(currentItem.startDay, currentItem.startTime);
+    const currentEnd = campusMinutes(currentItem.endDay, currentItem.endTime);
+    const nextStart = campusMinutes(nextAgenda[index].startDay, nextAgenda[index].startTime);
+    const nextEnd = campusMinutes(nextAgenda[index].endDay, nextAgenda[index].endTime);
+    let shift = null;
+
+    if ((name === 'startDay' || name === 'startTime') && currentStart !== null && currentEnd !== null && nextStart !== null) {
+      shift = nextStart - currentStart;
+      const shiftedEnd = campusPartsFromMinutes(currentEnd + shift);
+      nextAgenda[index].endDay = shiftedEnd.day;
+      nextAgenda[index].endTime = shiftedEnd.time;
+    } else if ((name === 'endDay' || name === 'endTime') && currentEnd !== null && nextEnd !== null) {
+      shift = nextEnd - currentEnd;
+    }
+
+    if (shift !== null) {
+      for (let itemIndex = index + 1; itemIndex < nextAgenda.length; itemIndex += 1) {
+        const shiftedStart = shiftCampusParts(
+          nextAgenda[itemIndex].startDay,
+          nextAgenda[itemIndex].startTime,
+          shift,
+        );
+        const shiftedEnd = shiftCampusParts(
+          nextAgenda[itemIndex].endDay,
+          nextAgenda[itemIndex].endTime,
+          shift,
+        );
+        if (!shiftedStart || !shiftedEnd) {
+          setError(`agenda.${index}.${name}`, {
+            type: 'manual',
+            message: 'This change would invalidate a later program item.',
+          });
+          return;
+        }
+        nextAgenda[itemIndex].startDay = shiftedStart.day;
+        nextAgenda[itemIndex].startTime = shiftedStart.time;
+        nextAgenda[itemIndex].endDay = shiftedEnd.day;
+        nextAgenda[itemIndex].endTime = shiftedEnd.time;
+      }
+
+      if (!agendaCandidateFitsEvent(nextAgenda)) {
+        setError(`agenda.${index}.${name}`, {
+          type: 'manual',
+          message: 'This change would move the agenda outside the event schedule.',
+        });
+        return;
+      }
+
+      clearErrors([`agenda.${index}.${name}`, 'agenda.root']);
+      setValue('agenda', nextAgenda, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+    } else {
+      setValue(`agenda.${index}.${name}`, value, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+    }
     await trigger('agenda');
   };
 
@@ -922,6 +1111,8 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                       id="startTime"
                       label="Start time"
                       value={startTime}
+                      minTime={!editing && startDay === campusNow.day ? campusNow.time : undefined}
+                      minTimeExclusive={!editing && startDay === campusNow.day}
                       onChange={(value) => updateSchedule('startTime', value)}
                       invalid={Boolean(errors.startTime)}
                       describedBy={describedBy('startTime')}
@@ -951,6 +1142,8 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                       id="endTime"
                       label="End time"
                       value={endTime}
+                      minTime={endDay === startDay ? startTime : undefined}
+                      minTimeExclusive={endDay === startDay}
                       onChange={(value) => updateSchedule('endTime', value)}
                       invalid={Boolean(errors.endTime)}
                       describedBy={describedBy('endTime')}
@@ -975,7 +1168,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
               <Button
                 type="button"
                 variant="outline"
-                disabled={isSubmitting || !eventScheduleReady || agendaFields.fields.length >= 40}
+                disabled={isSubmitting || !canAddAgenda}
                 aria-label="Add program"
                 title="Add program"
                 className="h-11 w-11 shrink-0 p-0"
@@ -983,10 +1176,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                   agendaFields.append({
                     title: '',
                     description: '',
-                    startDay: startDay || '',
-                    startTime: startTime || '',
-                    endDay: endDay || '',
-                    endTime: endTime || '',
+                    ...defaultAgendaSlot(),
                     speakerKeys: [],
                   })
                 }
@@ -996,7 +1186,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
             </div>
             <p className="-mt-3 mb-5 text-xs leading-5 text-slate-500">
               {eventScheduleReady
-                ? 'Program items can overlap for parallel sessions and must stay within the event schedule.'
+                ? 'New programs continue from the previous end time. You may add a break, but programs cannot overlap.'
                 : 'Complete a valid event schedule above before adding program items.'}
             </p>
             {(isSubmitted || agendaRootMessage) &&
@@ -1088,7 +1278,10 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                               id={`agenda-${index}-startDay`}
                               label={`Program ${index + 1} start date`}
                               value={agendaStartDay}
-                              minDate={validDay(startDay) ? startDay : undefined}
+                              minDate={laterDay([
+                                startDay,
+                                agendaValues[index - 1]?.endDay,
+                              ])}
                               maxDate={validDay(endDay) ? endDay : undefined}
                               allowPast={editing}
                               onChange={(value) => updateAgendaSchedule(index, 'startDay', value)}
@@ -1106,7 +1299,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                               id={`agenda-${index}-startTime`}
                               label={`Program ${index + 1} start time`}
                               value={agendaValue.startTime || ''}
-                              {...getAgendaTimeBounds(agendaValue, 'start')}
+                              {...getAgendaTimeBounds(agendaValue, 'start', index)}
                               onChange={(value) => updateAgendaSchedule(index, 'startTime', value)}
                               invalid={Boolean(errors.agenda?.[index]?.startTime)}
                               describedBy={`agenda-${index}-startTime-error`}
@@ -1143,7 +1336,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                               id={`agenda-${index}-endTime`}
                               label={`Program ${index + 1} end time`}
                               value={agendaValue.endTime || ''}
-                              {...getAgendaTimeBounds(agendaValue, 'end')}
+                              {...getAgendaTimeBounds(agendaValue, 'end', index)}
                               onChange={(value) => updateAgendaSchedule(index, 'endTime', value)}
                               invalid={Boolean(errors.agenda?.[index]?.endTime)}
                               describedBy={`agenda-${index}-endTime-error`}

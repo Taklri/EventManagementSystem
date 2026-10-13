@@ -72,6 +72,88 @@ test("rejects invalid fields and dates before persistence", async () => {
   assert.equal(Event.create.mock.callCount(), 0);
 });
 
+test("rejects a new event whose start date and time have already passed", async () => {
+  mock.method(Event, "create", async () => { throw new Error("must not save"); });
+  const startDate = new Date(Date.now() - 60_000).toISOString();
+  const endDate = new Date(Date.now() + 3_600_000).toISOString();
+  const res = response();
+  await createEvent(request({ ...base, startDate, endDate }), res);
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.field, "startDate");
+  assert.match(res.body.message, /future/i);
+  assert.equal(Event.create.mock.callCount(), 0);
+});
+
+test("accepts adjacent and gapped agenda items", async () => {
+  mock.method(Event, "create", async (data) => saved(data));
+  const item = (title, startDate, endDate) => ({
+    title,
+    startDate,
+    endDate,
+    speakerKeys: [],
+  });
+
+  for (const agenda of [
+    [
+      item("Opening", "2026-10-20T09:00", "2026-10-20T10:00"),
+      item("Talk", "2026-10-20T10:00", "2026-10-20T11:00"),
+    ],
+    [
+      item("Opening", "2026-10-20T09:00", "2026-10-20T10:00"),
+      item("Talk", "2026-10-20T10:30", "2026-10-20T11:00"),
+    ],
+  ]) {
+    const res = response();
+    await createEvent(request({ ...base, agenda }), res);
+    assert.equal(res.statusCode, 201);
+  }
+  assert.equal(Event.create.mock.callCount(), 2);
+});
+
+test("rejects overlapping and out-of-order agenda items with item issues", async () => {
+  mock.method(Event, "create", async () => { throw new Error("must not save"); });
+  const item = (title, startDate, endDate) => ({
+    title,
+    startDate,
+    endDate,
+    speakerKeys: [],
+  });
+
+  for (const agenda of [
+    [
+      item("Opening", "2026-10-20T09:00", "2026-10-20T10:00"),
+      item("Talk", "2026-10-20T09:30", "2026-10-20T11:00"),
+    ],
+    [
+      item("Opening", "2026-10-20T10:00", "2026-10-20T11:00"),
+      item("Talk", "2026-10-20T09:00", "2026-10-20T09:30"),
+    ],
+  ]) {
+    const res = response();
+    await createEvent(request({ ...base, agenda }), res);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body.field, "agenda");
+    assert.ok(res.body.issues.some((issue) => issue.path === "agenda.1.startDate"));
+  }
+  assert.equal(Event.create.mock.callCount(), 0);
+});
+
+test("the event model rejects overlapping agenda items", async () => {
+  const event = new Event({
+    title: "Campus gathering",
+    description: "A student event on campus.",
+    location: "Main auditorium",
+    organizerName: "National University",
+    startDate: new Date("2026-10-20T01:00:00.000Z"),
+    endDate: new Date("2026-10-20T04:00:00.000Z"),
+    agenda: [
+      { title: "Opening", startDate: new Date("2026-10-20T01:00:00.000Z"), endDate: new Date("2026-10-20T02:00:00.000Z"), speakerKeys: [] },
+      { title: "Talk", startDate: new Date("2026-10-20T01:30:00.000Z"), endDate: new Date("2026-10-20T03:00:00.000Z"), speakerKeys: [] },
+    ],
+  });
+  await assert.rejects(event.validate(), /Agenda items must be ordered and cannot overlap/);
+});
+
 test("validates file bytes, uploads supported images, and cleans up a failed save", async () => {
   const oldConfig = {
     CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
@@ -142,6 +224,45 @@ test("updates organization name without changing legacy organizer", async () => 
   await updateEvent({ body: { organizerName: "Student Council" }, params: { id: organizerId } }, res);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.event.organizerName, "Student Council");
+});
+
+test("preserves an unchanged legacy overlapping agenda during unrelated edits", async () => {
+  const legacyAgenda = [
+    { title: "Opening", startDate: new Date("2026-10-20T01:00:00.000Z"), endDate: new Date("2026-10-20T02:00:00.000Z"), speakerKeys: [] },
+    { title: "Talk", startDate: new Date("2026-10-20T01:30:00.000Z"), endDate: new Date("2026-10-20T03:00:00.000Z"), speakerKeys: [] },
+  ];
+  const event = saved({ ...base, isArchived: false, agenda: legacyAgenda, async save() {} });
+  mock.method(Event, "findById", async () => event);
+  const res = response();
+  await updateEvent({ body: { organizerName: "Student Council" }, params: { id: organizerId } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(event.agenda, legacyAgenda);
+});
+
+test("requires edited legacy agendas to be fixed before saving", async () => {
+  const event = saved({
+    ...base,
+    isArchived: false,
+    agenda: [
+      { title: "Opening", startDate: new Date("2026-10-20T01:00:00.000Z"), endDate: new Date("2026-10-20T02:00:00.000Z"), speakerKeys: [] },
+      { title: "Talk", startDate: new Date("2026-10-20T02:30:00.000Z"), endDate: new Date("2026-10-20T03:00:00.000Z"), speakerKeys: [] },
+    ],
+  });
+  mock.method(Event, "findById", async () => event);
+  const res = response();
+  await updateEvent({
+    body: {
+      organizerName: "Student Council",
+      agenda: [
+        { title: "Opening", startDate: "2026-10-20T09:00", endDate: "2026-10-20T10:00", speakerKeys: [] },
+        { title: "Talk", startDate: "2026-10-20T09:30", endDate: "2026-10-20T11:00", speakerKeys: [] },
+      ],
+    },
+    params: { id: organizerId },
+  }, res);
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.field, "agenda");
+  assert.ok(res.body.issues.some((issue) => issue.path === "agenda.1.startDate"));
 });
 
 test("missing tokens receive 401, students receive 403, and admins pass the event guard", async () => {

@@ -139,6 +139,16 @@ export const adminApi = {
     ),
   registrationForm: (id, token) =>
     apiRequest(`/admin/registration-forms/${encodeURIComponent(id)}`, { token }),
+  registrationFormResponses: (id, { page = 1, limit = 20, search = '' } = {}, token) =>
+    apiRequest(
+      `/admin/registration-forms/${encodeURIComponent(id)}/responses?${new URLSearchParams({ page: String(page), limit: String(limit), search })}`,
+      { token },
+    ),
+  registrationFormResponse: (id, responseId, token) =>
+    apiRequest(
+      `/admin/registration-forms/${encodeURIComponent(id)}/responses/${encodeURIComponent(responseId)}`,
+      { token },
+    ),
   createRegistrationForm: (body, token) =>
     apiRequest('/admin/registration-forms', { method: 'POST', body, token }),
   updateRegistrationForm: (id, body, token) =>
@@ -157,6 +167,22 @@ export const adminApi = {
       method: 'PATCH',
       token,
     }),
+  downloadRegistrationFormResponses: async (id, token, search = '') => {
+    const response = await fetch(
+      `${API_BASE_URL}/admin/registration-forms/${encodeURIComponent(id)}/responses/export?${new URLSearchParams({ search })}`,
+      {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const error = new Error(data.message || 'Unable to export registration responses.');
+      error.status = response.status;
+      throw error;
+    }
+    return response.blob();
+  },
   createEvent: (body, token) =>
     apiRequest('/events', { method: 'POST', body, token, timeoutMs: 45000 }),
   updateEvent: (id, body, token) =>

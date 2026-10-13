@@ -27,6 +27,16 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Event",
     },
+    actorName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    actorStudentId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     readAt: {
       type: Date,
       default: null,

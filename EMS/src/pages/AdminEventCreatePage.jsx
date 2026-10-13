@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft, ChevronDown, ImagePlus, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ImagePlus, Plus, Trash2 } from 'lucide-react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
@@ -76,10 +76,9 @@ const minTime = (values) => {
 };
 
 const laterDay = (values) =>
-  values.filter((value) => validDay(value)).reduce(
-    (current, value) => (!current || value > current ? value : current),
-    undefined,
-  );
+  values
+    .filter((value) => validDay(value))
+    .reduce((current, value) => (!current || value > current ? value : current), undefined);
 
 const campusParts = (value) => {
   const parts = toCampusInputParts(value);
@@ -88,7 +87,6 @@ const campusParts = (value) => {
 
 const structuredSchema = {
   eventType: z.enum(EVENT_TYPES, { message: 'Choose an event type.' }),
-  tags: z.array(z.object({ value: z.string().trim().min(1).max(40) })).max(8),
   speakers: z
     .array(
       z.object({
@@ -115,6 +113,7 @@ const structuredSchema = {
   reminders: z.array(z.object({ value: z.string().trim().min(1).max(240) })).max(20),
   registrationMode: z.enum(['none', 'required']),
   capacity: z.string().optional(),
+  registrationFormId: z.string().optional(),
 };
 
 const buildSchema = (allowPastDates = false) =>
@@ -171,6 +170,13 @@ const buildSchema = (allowPastDates = false) =>
           message: 'Capacity must be a whole number.',
         });
       }
+      if (values.registrationMode === 'required' && !values.registrationFormId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['registrationFormId'],
+          message: 'Choose a registration form.',
+        });
+      }
       if (
         values.registrationMode === 'required' &&
         values.capacity &&
@@ -188,7 +194,10 @@ const buildSchema = (allowPastDates = false) =>
           validTime(item.startTime) &&
           validDay(item.endDay) &&
           validTime(item.endTime);
-        if (hasValidAgendaRange && `${item.endDay}T${item.endTime}` <= `${item.startDay}T${item.startTime}`) {
+        if (
+          hasValidAgendaRange &&
+          `${item.endDay}T${item.endTime}` <= `${item.startDay}T${item.startTime}`
+        ) {
           context.addIssue({
             code: 'custom',
             path: ['agenda', index, 'endDay'],
@@ -294,6 +303,12 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
   const [speakerFiles, setSpeakerFiles] = useState({});
   const [speakerPreviews, setSpeakerPreviews] = useState({});
   const [removeSpeakerKeys, setRemoveSpeakerKeys] = useState([]);
+  const [registrationForms, setRegistrationForms] = useState([]);
+  const [formSearch, setFormSearch] = useState('');
+  const [formPickerOpen, setFormPickerOpen] = useState(false);
+  const formPickerRef = useRef(null);
+  const [formsLoading, setFormsLoading] = useState(false);
+  const [formsError, setFormsError] = useState('');
 
   const defaultSpeakers = (event?.speakers || []).map((speaker) => ({
     clientKey: speaker.clientKey || crypto.randomUUID(),
@@ -329,19 +344,20 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
       endDay: end.day,
       endTime: end.time,
       eventType: event?.eventType || 'Other',
-      tags: (event?.tags || []).map((value) => ({ value })),
       speakers: defaultSpeakers,
       agenda: defaultAgenda,
       requirements: (event?.requirements || []).map((value) => ({ value })),
       reminders: (event?.reminders || []).map((value) => ({ value })),
       registrationMode: event?.registrationMode || 'none',
+      registrationFormId:
+        event?.registrationFormId ||
+        (editing && event?.registrationForm?.items?.length ? 'legacy' : ''),
       capacity: event?.capacity ? String(event.capacity) : '',
     },
   });
 
   const agendaFields = useFieldArray({ control: form.control, name: 'agenda' });
   const speakerFields = useFieldArray({ control: form.control, name: 'speakers' });
-  const tagFields = useFieldArray({ control: form.control, name: 'tags' });
   const requirementFields = useFieldArray({ control: form.control, name: 'requirements' });
   const reminderFields = useFieldArray({ control: form.control, name: 'reminders' });
 
@@ -361,6 +377,51 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     },
     [imagePreview],
   );
+
+  useEffect(() => {
+    if (!accessToken) return undefined;
+    let active = true;
+    adminApi
+      .registrationForms({ status: 'active', limit: 50 }, accessToken)
+      .then(async (result) => {
+        let forms = result.forms || [];
+        if (
+          event?.registrationFormId &&
+          !forms.some((item) => item._id === event.registrationFormId)
+        ) {
+          try {
+            const selected = await adminApi.registrationForm(event.registrationFormId, accessToken);
+            forms = [...forms, selected.form];
+          } catch {
+            // Keep the existing selected id visible through the archived warning.
+          }
+        }
+        if (active) setRegistrationForms(forms);
+      })
+      .catch((error) => {
+        if (active) setFormsError(error.message || 'Unable to load registration forms.');
+      })
+      .finally(() => {
+        if (active) setFormsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accessToken, event?.registrationFormId]);
+
+  useEffect(() => {
+    if (!formPickerOpen) return undefined;
+
+    const handlePointerDown = (pointerEvent) => {
+      if (!formPickerRef.current?.contains(pointerEvent.target)) {
+        setFormPickerOpen(false);
+        setFormSearch('');
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [formPickerOpen]);
 
   const chooseImage = (file) => {
     setImageError('');
@@ -388,6 +449,16 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const selectRegistrationForm = (formId) => {
+    setValue('registrationFormId', formId, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+    setFormSearch('');
+    setFormPickerOpen(false);
+  };
+
   const submit = async (values) => {
     setFormError('');
     const body = new FormData();
@@ -398,10 +469,6 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
     body.append('endDate', `${values.endDay}T${values.endTime}`);
     body.append('eventType', values.eventType);
     body.append(
-      'tags',
-      JSON.stringify(values.tags.map((item) => item.value.trim()).filter(Boolean)),
-    );
-    body.append(
       'requirements',
       JSON.stringify(values.requirements.map((item) => item.value.trim()).filter(Boolean)),
     );
@@ -410,6 +477,10 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
       JSON.stringify(values.reminders.map((item) => item.value.trim()).filter(Boolean)),
     );
     body.append('registrationMode', values.registrationMode);
+    if (values.registrationMode === 'none') body.append('registrationFormId', '');
+    else if (values.registrationFormId && values.registrationFormId !== 'legacy') {
+      body.append('registrationFormId', values.registrationFormId);
+    }
     if (values.capacity) body.append('capacity', values.capacity);
     body.append(
       'speakers',
@@ -501,7 +572,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
   });
   const agendaValues = useWatch({ control: form.control, name: 'agenda' }) || [];
   const registrationMode = useWatch({ control: form.control, name: 'registrationMode' });
-  const tagValues = useWatch({ control: form.control, name: 'tags' });
+  const registrationFormId = useWatch({ control: form.control, name: 'registrationFormId' });
   const speakerValues = useWatch({ control: form.control, name: 'speakers' });
 
   const eventScheduleReady =
@@ -620,7 +691,15 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
   const agendaErrorSummary = agendaValues
     .map((_, index) => {
       const itemErrors = errors.agenda?.[index];
-      const messages = ['title', 'description', 'startDay', 'startTime', 'endDay', 'endTime', 'speakerKeys']
+      const messages = [
+        'title',
+        'description',
+        'startDay',
+        'startTime',
+        'endDay',
+        'endTime',
+        'speakerKeys',
+      ]
         .map((field) => itemErrors?.[field]?.message)
         .filter(Boolean);
       return messages.length ? { index, messages: [...new Set(messages)] } : null;
@@ -654,9 +733,13 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
       </header>
 
       <Form {...form}>
-        <form onSubmit={handleSubmit(submit, handleInvalidSubmit)} noValidate className="space-y-5">
+        <form
+          onSubmit={handleSubmit(submit, handleInvalidSubmit)}
+          noValidate
+          className="flex flex-col gap-5"
+        >
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-1 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="details-heading"
           >
             <SectionHeader
@@ -738,100 +821,39 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
           </section>
 
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-2 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="type-heading"
           >
             <SectionHeader
               id="type-heading"
-              title="Event type and tags"
+              title="Event type"
               description="Help students understand what kind of campus event this is."
             />
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field id="eventType" label="Event type" error={errors.eventType?.message}>
-                <div className="relative">
-                  <select
-                    id="eventType"
-                    className={`min-h-11 w-full appearance-none rounded-lg border bg-white px-3 pr-10 text-sm outline-none focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/15 ${fieldClass('eventType')}`}
-                    disabled={isSubmitting}
-                    {...register('eventType')}
-                  >
-                    {EVENT_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={17}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                  />
-                </div>
-              </Field>
-              <div className="space-y-2">
-                <Label htmlFor="tag-input">Tags</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="tag-input"
-                    placeholder="e.g. Academic"
-                    disabled={isSubmitting}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter') return;
-                      event.preventDefault();
-                      const value = event.currentTarget.value.trim();
-                      if (value && tagFields.fields.length < 8) {
-                        tagFields.append({ value });
-                        event.currentTarget.value = '';
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isSubmitting || tagFields.fields.length >= 8}
-                    aria-label="Add tag"
-                    title="Add tag"
-                    className="h-11 w-11 shrink-0 p-0"
-                    onClick={() => {
-                      const input = document.getElementById('tag-input');
-                      const value = input?.value.trim();
-                      if (value) {
-                        tagFields.append({ value });
-                        input.value = '';
-                      }
-                    }}
-                  >
-                    <Plus size={17} aria-hidden="true" />
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {tagFields.fields.map((field, index) => (
-                    <span
-                      key={field.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-700"
-                    >
-                      {tagValues?.[index]?.value}
-                      <button
-                        type="button"
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-red-700"
-                        aria-label={`Remove tag ${tagValues?.[index]?.value || 'tag'}`}
-                        title={`Remove tag ${tagValues?.[index]?.value || 'tag'}`}
-                        onClick={() => tagFields.remove(index)}
-                      >
-                        <X size={13} aria-hidden="true" />
-                      </button>
-                    </span>
+            <Field id="eventType" label="Event type" error={errors.eventType?.message}>
+              <div className="relative max-w-md">
+                <select
+                  id="eventType"
+                  className={`min-h-11 w-full appearance-none rounded-lg border bg-white px-3 pr-10 text-sm outline-none focus:border-nu-navy focus:ring-2 focus:ring-nu-navy/15 ${fieldClass('eventType')}`}
+                  disabled={isSubmitting}
+                  {...register('eventType')}
+                >
+                  {EVENT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
                   ))}
-                </div>
-                <p className="text-xs text-slate-500">
-                  Up to 8 tags. Press Enter or Add after typing.
-                </p>
+                </select>
+                <ChevronDown
+                  size={17}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                />
               </div>
-            </div>
+            </Field>
           </section>
 
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-5 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="schedule-heading"
           >
             <SectionHeader
@@ -906,7 +928,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
           </section>
 
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-6 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="agenda-heading"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -942,25 +964,26 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                 ? 'Program items can overlap for parallel sessions and must stay within the event schedule.'
                 : 'Complete a valid event schedule above before adding program items.'}
             </p>
-            {(isSubmitted || agendaRootMessage) && (agendaErrorSummary.length > 0 || agendaRootMessage) && (
-              <div
-                className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-                role="alert"
-                aria-live="polite"
-              >
-                <p className="font-semibold">Please fix the highlighted program items.</p>
-                {agendaRootMessage && (
-                  <p className="mt-1 text-xs text-red-700">{agendaRootMessage}</p>
-                )}
-                <ul className="mt-2 space-y-1 text-xs">
-                  {agendaErrorSummary.map(({ index, messages }) => (
-                    <li key={index}>
-                      Program {index + 1}: {messages.join(' ')}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {(isSubmitted || agendaRootMessage) &&
+              (agendaErrorSummary.length > 0 || agendaRootMessage) && (
+                <div
+                  className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <p className="font-semibold">Please fix the highlighted program items.</p>
+                  {agendaRootMessage && (
+                    <p className="mt-1 text-xs text-red-700">{agendaRootMessage}</p>
+                  )}
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {agendaErrorSummary.map(({ index, messages }) => (
+                      <li key={index}>
+                        Program {index + 1}: {messages.join(' ')}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             {agendaFields.fields.length === 0 ? (
               <p className="rounded-lg bg-slate-50 px-4 py-4 text-sm text-slate-500">
                 No program items yet. Add one when the event has a detailed schedule.
@@ -1126,7 +1149,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
           </section>
 
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="speakers-heading"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1250,7 +1273,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
           </section>
 
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-3 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="registration-heading"
           >
             <SectionHeader
@@ -1258,7 +1281,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
               title="Registration"
               description="Choose whether students need to reserve a place."
             />
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-3">
               <Field
                 id="registrationMode"
                 label="Registration mode"
@@ -1268,7 +1291,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                   <select
                     id="registrationMode"
                     className="min-h-11 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-10 text-sm"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || Boolean(event?.registrationFormLocked)}
                     {...register('registrationMode')}
                   >
                     <option value="none">No registration</option>
@@ -1281,6 +1304,177 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
                   />
                 </div>
               </Field>
+              {registrationMode === 'required' && (
+                <Field
+                  id="registrationFormId"
+                  label="Registration form"
+                  error={errors.registrationFormId?.message}
+                  help={
+                    event?.registrationFormLocked
+                      ? 'The selected form cannot be changed after the first submission.'
+                      : undefined
+                  }
+                >
+                  <div
+                    ref={formPickerRef}
+                    className="relative"
+                    onBlur={(focusEvent) => {
+                      if (focusEvent.currentTarget.contains(focusEvent.relatedTarget)) return;
+                      setFormPickerOpen(false);
+                      setFormSearch('');
+                    }}
+                  >
+                    <input type="hidden" {...register('registrationFormId')} />
+                    <div className="relative">
+                      <Input
+                        id="registrationFormId"
+                        role="combobox"
+                        aria-controls="registration-form-options"
+                        aria-expanded={formPickerOpen}
+                        aria-haspopup="listbox"
+                        aria-autocomplete="list"
+                        autoComplete="off"
+                        value={
+                          formPickerOpen
+                            ? formSearch
+                            : registrationForms.find((item) => item._id === registrationFormId)
+                                ?.name ||
+                              (registrationFormId === 'legacy'
+                                ? 'Legacy embedded form'
+                                : formSearch)
+                        }
+                        onFocus={() => {
+                          if (isSubmitting || event?.registrationFormLocked) return;
+                          setFormPickerOpen(true);
+                          setFormSearch('');
+                        }}
+                        onChange={(inputEvent) => {
+                          setFormPickerOpen(true);
+                          setFormSearch(inputEvent.target.value);
+                        }}
+                        onKeyDown={(keyboardEvent) => {
+                          if (keyboardEvent.key === 'Escape') {
+                            setFormPickerOpen(false);
+                            setFormSearch('');
+                          }
+                        }}
+                        placeholder={formsLoading ? 'Loading forms…' : 'Search or select a form'}
+                        disabled={isSubmitting || Boolean(event?.registrationFormLocked)}
+                        aria-invalid={Boolean(errors.registrationFormId)}
+                        aria-describedby={describedBy('registrationFormId')}
+                        className="pr-10"
+                      />
+                      <ChevronDown
+                        size={17}
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition-transform ${
+                          formPickerOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    {formPickerOpen && !isSubmitting && !event?.registrationFormLocked && (
+                      <div
+                        id="registration-form-options"
+                        role="listbox"
+                        aria-label="Available registration forms"
+                        className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+                      >
+                        {formsLoading && (
+                          <p className="px-3 py-2 text-sm text-slate-500">Loading forms…</p>
+                        )}
+                        {!formsLoading && formsError && (
+                          <p className="px-3 py-2 text-sm text-red-700">Unable to load forms.</p>
+                        )}
+                        {!formsLoading &&
+                          !formsError &&
+                          registrationFormId === 'legacy' &&
+                          'legacy embedded form'.includes(formSearch.trim().toLowerCase()) && (
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={registrationFormId === 'legacy'}
+                              className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-nu-dark hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                              onClick={() => selectRegistrationForm('legacy')}
+                            >
+                              <span className="min-w-0 flex-1 truncate">Legacy embedded form</span>
+                              <span className="ml-3 text-xs text-amber-700">Archived</span>
+                            </button>
+                          )}
+                        {!formsLoading &&
+                          !formsError &&
+                          registrationForms
+                            .filter((item) =>
+                              item.name.toLowerCase().includes(formSearch.trim().toLowerCase()),
+                            )
+                            .map((item) => (
+                              <button
+                                key={item._id}
+                                type="button"
+                                role="option"
+                                aria-selected={registrationFormId === item._id}
+                                className="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-nu-dark hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                                onClick={() => selectRegistrationForm(item._id)}
+                              >
+                                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                                {item.isArchived && (
+                                  <span className="ml-3 text-xs text-amber-700">Archived</span>
+                                )}
+                              </button>
+                            ))}
+                        {!formsLoading &&
+                          !formsError &&
+                          registrationForms.filter((item) =>
+                            item.name.toLowerCase().includes(formSearch.trim().toLowerCase()),
+                          ).length === 0 &&
+                          registrationFormId !== 'legacy' && (
+                            <p className="px-3 py-2 text-sm text-slate-500">
+                              {registrationForms.length === 0
+                                ? 'No active forms yet.'
+                                : 'No forms match your search.'}
+                            </p>
+                          )}
+                      </div>
+                    )}
+                    {formsError && <p className="text-xs text-red-700">{formsError}</p>}
+                    {!formsLoading && !formsError && registrationForms.length === 0 && (
+                      <p className="text-xs text-slate-500">
+                        No active forms yet.{' '}
+                        <Link
+                          className="font-semibold text-nu-navy underline"
+                          to="/admin/registration-forms/new"
+                        >
+                          Create a form
+                        </Link>
+                        .
+                      </p>
+                    )}
+                    {event?.registrationFormId &&
+                      registrationForms.find((item) => item._id === event.registrationFormId)
+                        ?.isArchived && (
+                        <p className="text-xs text-amber-700">
+                          This event uses an archived form. It remains available here for existing
+                          registrations.
+                        </p>
+                      )}
+                    {registrationFormId &&
+                      registrationForms.find((item) => item._id === registrationFormId)
+                        ?.description && (
+                        <p className="text-xs text-slate-500">
+                          {
+                            registrationForms.find((item) => item._id === registrationFormId)
+                              ?.description
+                          }
+                        </p>
+                      )}
+                    <Link
+                      to="/admin/registration-forms/new"
+                      className="inline-flex text-xs font-semibold text-nu-navy underline"
+                    >
+                      Create registration form
+                    </Link>
+                  </div>
+                </Field>
+              )}
               {registrationMode === 'required' && (
                 <Field
                   id="capacity"
@@ -1310,7 +1504,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
           </section>
 
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-7 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="guidance-heading"
           >
             <SectionHeader
@@ -1375,7 +1569,7 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
           </section>
 
           <section
-            className="rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
+            className="order-8 rounded-xl border border-slate-200 bg-white p-5 sm:p-7"
             aria-labelledby="cover-heading"
           >
             <SectionHeader
@@ -1468,12 +1662,12 @@ const AdminEventCreatePage = ({ event, returnTo }) => {
           {formError && (
             <p
               role="alert"
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+              className="order-9 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
             >
               {formError}
             </p>
           )}
-          <div className="flex flex-col-reverse items-stretch justify-end gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:items-center">
+          <div className="order-10 flex flex-col-reverse items-stretch justify-end gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:items-center">
             <Button asChild variant="ghost" className="w-full sm:w-auto">
               <Link
                 to={editing ? `/admin/events/${event._id}` : '/admin'}

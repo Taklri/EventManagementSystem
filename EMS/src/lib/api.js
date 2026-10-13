@@ -74,13 +74,25 @@ export const eventsApi = {
   get: (id, token) => apiRequest(`/events/${encodeURIComponent(id)}`, { token }),
   registration: (id, token) =>
     apiRequest(`/events/${encodeURIComponent(id)}/registration`, { token }),
-  register: (id, token) =>
-    apiRequest(`/events/${encodeURIComponent(id)}/registration`, { method: 'POST', token }),
+  registrationForm: (id, token) =>
+    apiRequest(`/events/${encodeURIComponent(id)}/registration/form`, { token }),
+  register: (id, token, answers) =>
+    apiRequest(`/events/${encodeURIComponent(id)}/registration`, {
+      method: 'POST',
+      body: { answers },
+      token,
+    }),
   cancelRegistration: (id, token) =>
     apiRequest(`/events/${encodeURIComponent(id)}/registration`, { method: 'DELETE', token }),
   myRegistrations: (token) => apiRequest('/events/my-registrations', { token }),
   recordAttendance: (id, token, attendanceToken) =>
     apiRequest(`/events/${encodeURIComponent(id)}/attendance`, {
+      method: 'POST',
+      body: { token: attendanceToken },
+      token,
+    }),
+  previewAttendance: (id, token, attendanceToken) =>
+    apiRequest(`/events/${encodeURIComponent(id)}/attendance/preview`, {
       method: 'POST',
       body: { token: attendanceToken },
       token,
@@ -97,6 +109,31 @@ export const adminApi = {
       `/admin/events?${new URLSearchParams({ page: String(page), limit: String(limit), search, status })}`,
       { token },
     ),
+  registrationForms: ({ page = 1, limit = 10, search = '', status = 'active' } = {}, token) =>
+    apiRequest(
+      `/admin/registration-forms?${new URLSearchParams({ page: String(page), limit: String(limit), search, status })}`,
+      { token },
+    ),
+  registrationForm: (id, token) =>
+    apiRequest(`/admin/registration-forms/${encodeURIComponent(id)}`, { token }),
+  createRegistrationForm: (body, token) =>
+    apiRequest('/admin/registration-forms', { method: 'POST', body, token }),
+  updateRegistrationForm: (id, body, token) =>
+    apiRequest(`/admin/registration-forms/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body,
+      token,
+    }),
+  archiveRegistrationForm: (id, token) =>
+    apiRequest(`/admin/registration-forms/${encodeURIComponent(id)}/archive`, {
+      method: 'PATCH',
+      token,
+    }),
+  unarchiveRegistrationForm: (id, token) =>
+    apiRequest(`/admin/registration-forms/${encodeURIComponent(id)}/unarchive`, {
+      method: 'PATCH',
+      token,
+    }),
   createEvent: (body, token) =>
     apiRequest('/events', { method: 'POST', body, token, timeoutMs: 45000 }),
   updateEvent: (id, body, token) =>
@@ -112,6 +149,25 @@ export const adminApi = {
     apiRequest(`/events/${encodeURIComponent(id)}/unarchive`, { method: 'PATCH', token }),
   registrationSummary: (id, token) =>
     apiRequest(`/admin/events/${encodeURIComponent(id)}/registrations`, { token }),
+  registrations: (id, { page = 1, limit = 20, status = 'all' }, token) =>
+    apiRequest(
+      `/admin/events/${encodeURIComponent(id)}/registrations?${new URLSearchParams({ page: String(page), limit: String(limit), status })}`,
+      { token },
+    ),
+  downloadRegistrations: async (id, token) => {
+    const response = await fetch(
+      `${API_BASE_URL}/admin/events/${encodeURIComponent(id)}/registrations/export`,
+      {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || 'Unable to export registrations.');
+    }
+    return response.blob();
+  },
   createAttendanceSession: (id, token) =>
     apiRequest(`/admin/events/${encodeURIComponent(id)}/attendance/session`, {
       method: 'POST',

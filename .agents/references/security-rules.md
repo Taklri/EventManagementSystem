@@ -29,6 +29,7 @@ Registration follows a similar OTP flow using `PendingRegistration`; the user is
 - Event creation, update, archive, and unarchive operations require the `admin` role.
 - Event catalog and detail reads require an authenticated `student` or `admin` role. Student registration, cancellation, and attendance endpoints require the `student` role. Registration and attendance summaries, QR session creation, and attendance record lookup require the `admin` role.
 - The admin dashboard and admin event-list endpoints require a bearer token and the `admin` role. Portal route guards send students and admins to their own landing pages; backend middleware remains the authority for protected API access.
+- Registration form list, create, read, update, archive, and unarchive endpoints require the `admin` role. Students cannot manage forms, and archived forms are not selectable for new event creation.
 - Profile updates allow an admin to update any profile or a user to update their own profile.
 
 ## Rate limits
@@ -79,3 +80,10 @@ Never copy values from `.env` into documentation, AI skills, logs, responses, co
 - Preserve credentialed CORS behavior for the configured frontend origin.
 - Keep authorization checks on the server even when the frontend hides controls.
 - Verify both successful and denied authentication/authorization paths after security-sensitive changes.
+
+## Registration and QR access
+
+- Student identity and school ID come from the verified account, never the registration form or attendance request body. Registration answers are validated against the event form before any record is created.
+- Student form retrieval, submission, cancellation, QR preview, and QR confirmation require the student role. Admin response lists, CSV export, QR generation, and attendance history require the admin role.
+- QR preview validates the event-specific signed token, expiry, registration status, and time window without saving. Confirmation repeats validation server-side. Time in is inserted once under the unique event/student index; time out uses a conditional update; completed attendance cannot be changed by another scan.
+- Do not log or persist QR tokens beyond the admin display response. Archived and no-registration events reject attendance mutation. Historical admin attendance reads are permitted after archive.

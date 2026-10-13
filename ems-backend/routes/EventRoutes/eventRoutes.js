@@ -14,10 +14,11 @@ import { eventImageUpload } from "../../middleware/eventImageUpload.js";
 import {
   cancelEventRegistration,
   getEventRegistration,
+  getRegistrationForm,
   getMyEventRegistrations,
   registerForEvent,
 } from "../../controller/eventRegistrationController.js";
-import { recordAttendance } from "../../controller/eventAttendanceController.js";
+import { previewAttendance, recordAttendance } from "../../controller/eventAttendanceController.js";
 
 const router = express.Router();
 
@@ -26,9 +27,11 @@ router.get("/", authenticate, authorizeRoles("student", "admin"), getEvents);
 router.get("/archived", authenticate, authorizeRoles("student", "admin"), getArchivedEvents);
 router.get("/my-registrations", authenticate, authorizeRoles("student"), getMyEventRegistrations);
 router.get("/:id/registration", authenticate, authorizeRoles("student"), getEventRegistration);
+router.get("/:id/registration/form", authenticate, authorizeRoles("student"), getRegistrationForm);
 router.post("/:id/registration", authenticate, authorizeRoles("student"), registerForEvent);
 router.delete("/:id/registration", authenticate, authorizeRoles("student"), cancelEventRegistration);
 router.post("/:id/attendance", authenticate, authorizeRoles("student"), recordAttendance);
+router.post("/:id/attendance/preview", authenticate, authorizeRoles("student"), previewAttendance);
 router.get("/:id", authenticate, authorizeRoles("student", "admin"), getEventById);
 router.put("/:id", authenticate, authorizeRoles("admin"), eventImageUpload, updateEvent);
 router.patch("/:id/archive", authenticate, authorizeRoles("admin"), archiveEvent);

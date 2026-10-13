@@ -126,8 +126,11 @@ const AdminAttendanceTable = ({ eventId, accessToken }) => {
             />
           </div>
         </form>
-        <div>
-          <label htmlFor="attendance-filter" className="text-xs font-medium text-slate-600">
+        <div className="min-w-0 md:w-52 md:shrink-0">
+          <label
+            htmlFor="attendance-filter"
+            className="block text-xs font-medium text-slate-600"
+          >
             Attendance status
           </label>
           <select

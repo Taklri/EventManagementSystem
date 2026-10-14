@@ -25,7 +25,6 @@ export const YEAR_LEVEL_OPTIONS = [
     '4th Year',
     '5th Year',
     '6th Year',
-    '7th Year',
 ];
 
 export const isValidEmail = (email) => {

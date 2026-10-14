@@ -8,7 +8,6 @@ export const YEAR_LEVEL_OPTIONS = [
   '4th Year',
   '5th Year',
   '6th Year',
-  '7th Year',
 ];
 export const PROGRAM_OPTIONS = [
   'Bachelor of Science in Accountancy',

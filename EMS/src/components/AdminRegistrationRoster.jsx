@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@mui/material';
 import { Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from './ui/button';
 import { adminApi } from '../lib/api';
 
@@ -30,7 +31,6 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
-  const [expanded, setExpanded] = useState(null);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -204,37 +204,16 @@ const AdminRegistrationRoster = ({ eventId, accessToken }) => {
                     <TableCell className="capitalize">{row.status}</TableCell>
                     <TableCell>{campusTime(row.submittedAt)}</TableCell>
                     <TableCell>
-                      {(row.answers || []).length ? (
-                        <button
-                          type="button"
-                          className="text-sm font-semibold text-nu-navy underline print:hidden"
-                          onClick={() =>
-                            setExpanded((current) => (current === row._id ? null : row._id))
-                          }
-                          aria-expanded={expanded === row._id}
-                          aria-controls={`roster-answers-${row._id}`}
+                      {(row.answers || []).length && data.registrationFormId ? (
+                        <Link
+                          to={`/admin/registration-forms/${data.registrationFormId}/responses/${row._id}`}
+                          state={{ returnTo: `/admin/events/${eventId}?tab=registration` }}
+                          className="text-sm font-semibold text-nu-navy underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy focus-visible:ring-offset-2 print:hidden"
                         >
-                          {expanded === row._id ? 'Hide answers' : 'View answers'}
-                        </button>
+                          View answers
+                        </Link>
                       ) : (
                         '—'
-                      )}
-                      {expanded === row._id && (
-                        <dl
-                          id={`roster-answers-${row._id}`}
-                          className="mt-3 min-w-56 space-y-2 text-xs print:hidden"
-                        >
-                          {row.answers.map((answer) => (
-                            <div key={answer.key}>
-                              <dt className="font-semibold text-nu-dark">{answer.label}</dt>
-                              <dd className="mt-0.5 text-slate-600">
-                                {Array.isArray(answer.value)
-                                  ? answer.value.join(', ')
-                                  : answer.value || 'No answer'}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
                       )}
                     </TableCell>
                   </TableRow>

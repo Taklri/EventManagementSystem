@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ClipboardList } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
 import { adminApi } from '../lib/api';
@@ -19,9 +19,17 @@ const answerValue = (value) =>
 
 const AdminRegistrationResponsePage = () => {
   const { id, responseId } = useParams();
+  const location = useLocation();
   const { accessToken } = useAuth();
   const [state, setState] = useState({ loading: true, error: '', data: null });
   const [attempt, setAttempt] = useState(0);
+  const returnTo =
+    typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith('/admin/')
+      ? location.state.returnTo
+      : `/admin/registration-forms/${id}`;
+  const returnLabel = returnTo.startsWith('/admin/events/')
+    ? 'Back to event registration'
+    : 'Back to form results';
 
   useEffect(() => {
     let active = true;
@@ -52,7 +60,7 @@ const AdminRegistrationResponsePage = () => {
         <p className="mt-2 text-sm text-slate-500">{state.error || 'This response is no longer available.'}</p>
         <div className="mt-5 flex justify-center gap-2">
           <Button asChild variant="outline">
-            <Link to={`/admin/registration-forms/${id}`}>Back to form</Link>
+            <Link to={returnTo}>{returnLabel}</Link>
           </Button>
           <Button type="button" onClick={() => { setState((current) => ({ ...current, loading: true })); setAttempt((value) => value + 1); }}>
             Retry
@@ -66,11 +74,11 @@ const AdminRegistrationResponsePage = () => {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <Link
-        to={`/admin/registration-forms/${id}`}
+        to={returnTo}
         className="inline-flex items-center gap-2 text-sm font-semibold text-nu-navy underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nu-navy"
       >
         <ArrowLeft size={15} aria-hidden="true" />
-        Back to form results
+        {returnLabel}
       </Link>
       <header>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">

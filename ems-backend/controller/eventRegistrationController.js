@@ -423,6 +423,7 @@ export const getAdminRegistrationSummary = async (req, res) => {
     );
     const totalPages = Math.ceil(total / limit);
     return res.status(200).json({
+      registrationFormId: event.registrationFormId || null,
       registration: {
         mode: event.registrationMode || "none",
         capacity: event.capacity || null,

@@ -32,9 +32,6 @@ export const loginResendRateLimiter = rateLimit({
 
 export const apiRateLimiter =  rateLimit({
     windowMs: 10 * 60 * 1000,
-    // Normal portal browsing can issue several requests while a page loads.
-    // Keep this higher than the authentication limits below so it does not
-    // weaken login, OTP, registration, or password-reset protections.
     limit: 300,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
